@@ -1,0 +1,287 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String
+  plantId   String?
+  createdAt DateTime @default(now())
+  approvals Approval[] @relation("Requester")
+  approved  Approval[] @relation("Approver")
+}
+
+model Plant {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  city      String
+  country   String
+  latitude  Float
+  longitude Float
+  annualValue Float
+  uptimeTarget Float
+  dvaTarget Float
+  inventories Inventory[]
+  purchaseOrders PurchaseOrder[]
+  bom BOM[]
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  country   String
+  region    String
+  city      String
+  latitude  Float
+  longitude Float
+  domestic  Boolean
+  dvaEligible Boolean
+  qualityScore Float
+  reliability Float
+  capacity Float
+  leadTimeDays Int
+  tariffRate Float
+  status    String   @default("HEALTHY")
+  riskScore Float    @default(20)
+  purchaseOrders PurchaseOrder[]
+  purchaseItems PurchaseOrderItem[]
+  allocations SupplierAllocation[]
+}
+
+model Component {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  category  String
+  unitCost  Float
+  co2PerUnit Float @default(0)
+  bomItems  BOM[]
+  inventory Inventory[]
+  purchaseItems PurchaseOrderItem[]
+}
+
+model BOM {
+  id          String @id @default(cuid())
+  plantId     String
+  componentId String
+  quantity    Float
+  plant       Plant @relation(fields: [plantId], references: [id])
+  component   Component @relation(fields: [componentId], references: [id])
+  @@unique([plantId, componentId])
+}
+
+model Inventory {
+  id          String @id @default(cuid())
+  plantId     String
+  componentId String
+  quantity    Float
+  reorderPoint Float
+  plant       Plant @relation(fields: [plantId], references: [id])
+  component   Component @relation(fields: [componentId], references: [id])
+  @@unique([plantId, componentId])
+}
+
+model PurchaseOrder {
+  id          String @id @default(cuid())
+  poNumber    String @unique
+  plantId     String
+  supplierId  String
+  status      String @default("OPEN")
+  totalValue  Float
+  approvalStatus String @default("NONE")
+  erpSynced   Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  plant       Plant @relation(fields: [plantId], references: [id])
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  items       PurchaseOrderItem[]
+  incidents   Incident[]
+}
+
+model PurchaseOrderItem {
+  id          String @id @default(cuid())
+  poId        String
+  componentId String
+  supplierId  String
+  quantity    Float
+  unitCost    Float
+  po          PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  component   Component @relation(fields: [componentId], references: [id])
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+}
+
+model DisruptionEvent {
+  id        String @id @default(cuid())
+  type      String
+  title     String
+  description String
+  country   String?
+  severity  String
+  source    String
+  confirmed Boolean @default(false)
+  createdAt DateTime @default(now())
+  incidents Incident[]
+}
+
+model Incident {
+  id        String @id @default(cuid())
+  incidentId String @unique
+  title     String
+  status    String
+  type      String
+  tariffIncrease Float @default(0)
+  delayDays Int @default(0)
+  currencyDepreciation Float @default(0)
+  supplierCapacityReduction Float @default(0)
+  inventoryLevel Float @default(100)
+  demand     Float @default(100)
+  disruptionEventId String?
+  poId      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  disruptionEvent DisruptionEvent? @relation(fields: [disruptionEventId], references: [id])
+  po        PurchaseOrder? @relation(fields: [poId], references: [id])
+  agentExecutions AgentExecution[]
+  riskAssessments RiskAssessment[]
+  allocations SupplierAllocation[]
+  complianceAssessments ComplianceAssessment[]
+  approvals Approval[]
+  auditLogs AuditLog[]
+  simulationScenarios SimulationScenario[]
+}
+
+model AgentExecution {
+  id        String @id @default(cuid())
+  incidentId String
+  agentName String
+  status    String
+  inputJson String
+  outputJson String
+  confidence Float
+  durationMs Int
+  createdAt DateTime @default(now())
+  incident  Incident @relation(fields: [incidentId], references: [id])
+  @@index([incidentId, agentName])
+}
+
+model RiskAssessment {
+  id        String @id @default(cuid())
+  incidentId String
+  overallRisk Float
+  tariffRisk Float
+  stockoutProbability Float
+  concentrationRisk Float
+  financialExposure Float
+  downtimeHours Float
+  dvaExposure Float
+  breakdownJson String
+  explanation String
+  createdAt DateTime @default(now())
+  incident  Incident @relation(fields: [incidentId], references: [id])
+}
+
+model SupplierAllocation {
+  id        String @id @default(cuid())
+  incidentId String
+  supplierId String
+  componentId String
+  quantity  Float
+  unitCost  Float
+  landedCost Float
+  delayDays Int
+  reason    String
+  createdAt DateTime @default(now())
+  incident  Incident @relation(fields: [incidentId], references: [id])
+  supplier  Supplier @relation(fields: [supplierId], references: [id])
+}
+
+model ComplianceAssessment {
+  id        String @id @default(cuid())
+  incidentId String
+  dva       Float
+  target    Float
+  result    String
+  detailsJson String
+  createdAt DateTime @default(now())
+  incident  Incident @relation(fields: [incidentId], references: [id])
+}
+
+model Approval {
+  id        String @id @default(cuid())
+  incidentId String
+  requesterId String?
+  approverId String?
+  status    String
+  financialImpact Float
+  proposedJson String
+  decisionNote String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  incident  Incident @relation(fields: [incidentId], references: [id])
+  requester User? @relation("Requester", fields: [requesterId], references: [id])
+  approver  User? @relation("Approver", fields: [approverId], references: [id])
+}
+
+model AuditLog {
+  id        String @id @default(cuid())
+  incidentId String?
+  action    String
+  entityType String
+  entityId  String?
+  actor     String
+  detailsJson String
+  createdAt DateTime @default(now())
+  incident  Incident? @relation(fields: [incidentId], references: [id])
+  @@index([createdAt])
+  @@index([incidentId])
+}
+
+model UploadedDocument {
+  id        String @id @default(cuid())
+  fileName  String
+  mimeType  String
+  extractedText String
+  verified  Boolean @default(false)
+  createdAt DateTime @default(now())
+}
+
+model ExternalDataSource {
+  id        String @id @default(cuid())
+  name      String
+  kind      String
+  status    String
+  lastSyncAt DateTime?
+  freshness String
+  sourceUrl String?
+}
+
+model SimulationScenario {
+  id        String @id @default(cuid())
+  incidentId String?
+  name      String
+  strategy  String
+  parametersJson String
+  resultsJson String
+  createdAt DateTime @default(now())
+  incident  Incident? @relation(fields: [incidentId], references: [id])
+}
+
+model SustainabilityRecord {
+  id        String @id @default(cuid())
+  supplierId String
+  transportMode String
+  co2eKg    Float
+  methodology String
+  sourceLabel String
+  createdAt DateTime @default(now())
+}

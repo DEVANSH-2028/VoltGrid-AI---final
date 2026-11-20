@@ -1,0 +1,19 @@
+{
+  "name": "voltgrid-ai",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "setup": "npm install && npm run prisma:generate --workspace=backend && npm run db:setup --workspace=backend",
+    "dev": "concurrently -k -n API,WEB -c cyan,magenta \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "build": "npm run build --workspace=frontend",
+    "test": "npm run test --workspace=backend",
+    "prisma:generate": "npm run prisma:generate --workspace=backend",
+    "db:setup": "npm run db:setup --workspace=backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
