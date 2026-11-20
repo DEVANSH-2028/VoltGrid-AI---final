@@ -1,3 +1,4 @@
+ HEAD
 # VoltGrid AI
 
 VoltGrid AI is a local enterprise prototype for resilient EV battery supply-chain operations.
@@ -33,3 +34,6 @@ React/Vite, Express/Socket.IO, Prisma/SQLite, Zod-ready backend modules, Rechart
 - GDELT and external news are not treated as verified tariff notifications.
 - PLI/DVA values are configurable demonstration calculations, not legal advice.
 - Sustainability values are illustrative estimates, not verified carbon accounting.
+
+# VoltGrid-Ai
+ 0058f271b7e5979f4d6c472588d5e13963722e5c
