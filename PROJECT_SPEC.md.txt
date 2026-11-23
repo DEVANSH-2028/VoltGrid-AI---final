@@ -1,1173 +1,194 @@
-# VOLTGRID AI — COMPLETE ENTERPRISE PRODUCT DEVELOPMENT SPECIFICATION
+# VoltGrid AI — Current Project Specification
 
-## YOUR ROLE
+## Document purpose
 
-Act as a senior full-stack engineer, enterprise architect, AI engineer, SAP solution architect, data engineer and premium SaaS product designer.
+This document describes the current VoltGrid AI prototype in this repository. It is an as-built product and behavior specification, not a claim that every possible enterprise capability or integration is production-ready. Future enhancements are identified separately at the end.
 
-You are responsible for building a complete, functional enterprise software prototype for the SAP Hackfest 2026 Grand Finale.
+## 1. Product identity and goals
 
-This is not a landing page, static dashboard or UI-only college project.
+**Product:** VoltGrid AI — a geopolitical- and tariff-resilient sourcing network for EV battery assembly.
 
-Build a working EV Battery Supply Chain Resilience Control Tower with autonomous multi-agent orchestration, geopolitical disruption intelligence, procurement optimization, PLI compliance, sustainability analytics and human-governed ERP simulation.
+**Positioning:** A SAP Side-by-Side AI Extension for SAP BTP that extends SAP S/4HANA, SAP Ariba, SAP IBP, and SAP Build Process Automation. VoltGrid is not a replacement ERP.
 
-Read this entire specification before starting implementation.
+**Business context:** The prototype represents an LFP battery assembly plant in Chakan, Pune, with an illustrative annual procurement value of ₹180 Cr and a network of 14 suppliers. Its business goals are 99.2% plant uptime, more than 50% domestic value addition (DVA), and compressing disruption response from 72 hours to minutes.
 
-Create an implementation roadmap, maintain a PROJECT_STATUS.md file and complete every phase systematically.
+All business values and seeded records are demonstration data unless a live source is explicitly identified. The goals above are not measured production guarantees.
 
-Do not stop after creating the frontend.
+## 2. Active persona and authority
 
----
+The application has one active persona: **Meera Nair**, EV Sourcing Planner · Chakan Plant, Pune (`planner@voltgrid.ai`).
 
-# PART 1 — PRODUCT IDENTITY
+- The frontend opens directly as Meera; there is no user-facing login screen or role switcher.
+- The backend seeds demo user records and provides authentication endpoints for the app's automatic session.
+- Meera has end-to-end demo authority, including approval/rejection/revision of escalations, SAP sandbox synchronization, audit-log access, and report export.
+- Do not add additional selectable personas or expose manager/auditor roles in the product UI without an explicit product decision.
 
-Product: VoltGrid AI
+## 3. Product experience: seven active modules
 
-Full name: Geopolitical & Tariff-Resilient Sourcing Network for EV Battery Assembly.
+The persistent navigation contains exactly these seven modules. Older URLs redirect to a current module; they do not represent additional active modules.
 
-Core mission:
+### 3.1 Executive Control Tower
 
-Transform how Indian EV battery manufacturers respond to geopolitical disruptions, sudden customs tariff changes, supplier failures, currency shocks and logistics interruptions.
+Shows the Chakan operating overview, including procurement value, supplier count, weighted risk, DVA, inventory coverage, at-risk purchase orders and financial exposure. It also shows spend by country, sourcing composition, critical alerts, recent incident activity, and integration status. The crisis-playbook action starts a disruption simulation.
 
-Primary business environment:
-- Chakan, Pune, Maharashtra.
-- EV battery assembly.
-- LFP battery supply chain.
-- Global and domestic sourcing.
-- Government PLI domestic value addition safeguards.
+### 3.2 Digital Twin & Suppliers
 
-Primary persona:
+Displays the Chakan plant and supplier locations on a Leaflet/OpenStreetMap map, plus supplier risk, quality, reliability, lead-time, origin, and DVA-eligibility details. Selecting a supplier on the map or in the directory synchronizes the selected record. Port locations are illustrative.
 
-Meera Nair — EV Sourcing Planner.
+### 3.3 Disruption & Split-Order Lab
 
-Illustrative business context:
-- ₹180 crore annual procurement.
-- 14 global and domestic suppliers.
-- 99.2% production uptime target.
-- More than 50% domestic value addition target.
-- Manual disruption analysis currently takes up to 72 hours.
-
-The product should demonstrate how the three agents can compress the disruption-response process into minutes.
-
----
-
-# PART 2 — TECHNOLOGY STACK
-
-Frontend:
-- React.
-- Vite.
-- JavaScript ES6+.
-- React Router.
-- Custom CSS.
-- Framer Motion.
-- Recharts.
-- Lucide React.
-- Leaflet.
+Provides scenario controls for tariff increase, delay, currency depreciation, supplier-capacity reduction, inventory, and demand. Its tabs support scenario execution, document upload/verification, and comparison of balanced, cost, domestic-heavy, and lowest-risk strategies. Scenarios produce proposed supplier allocations for review; they do not automatically change live SAP data.
 
-Backend:
-- Node.js.
-- Express.
-- REST API.
-- Socket.IO.
-- Prisma ORM.
-- Zod validation.
-
-Database:
-- SQLite for initial local development.
-- PostgreSQL-compatible Prisma schema for future migration.
-- Persistent seeded business data.
-
-AI:
-- Google Gemini API.
-- Groq API as an alternative.
-- Configurable provider selection.
-- Deterministic local fallback.
-- Structured JSON responses.
-
-Other libraries:
-- PDF.js or equivalent PDF text extraction library.
-- Multer.
-- PapaParse or equivalent CSV parser.
-- PDF report generation library.
-- bcrypt and JWT if authentication requires them.
-
-Development rules:
-- Keep frontend and backend separate.
-- Store API keys only on the backend.
-- Use environment variables.
-- Use reusable components.
-- Maintain modular agent services.
-- Keep business logic independent of the LLM.
-- Avoid unnecessary dependencies.
-
----
-
-# PART 3 — VISUAL DESIGN
-
-Design a premium industrial enterprise application.
-
-Visual references:
-- SAP Fiori.
-- Automotive manufacturing software.
-- Industrial control towers.
-- Enterprise procurement systems.
-- Modern logistics platforms.
-
-Color system:
-
-Navy: #142C43
-Blue: #1769AA
-Electric blue: #16A6D9
-Green: #26966B
-Amber: #E39A28
-Red: #C94B42
-Background: #F4F7FA
-White: #FFFFFF
-Text: #1C2A38
-
-Avoid:
-- Black AI dashboards.
-- Purple neon gradients.
-- Glowing AI circles.
-- Generic chatbot layouts.
-- Excessive glassmorphism.
-- Unnecessary gradients.
-- Generic AI-generated layouts.
-- Oversized rounded cards everywhere.
-
-Create:
-- Professional typography.
-- Custom icons.
-- Subtle shadows.
-- Clean borders.
-- Beautiful tables.
-- Data-dense layouts.
-- Animated transitions.
-- Interactive charts.
-- Consistent spacing.
-- Responsive pages.
-- Thoughtful empty states.
-- Professional loading states.
-
-Create a unique VoltGrid logo using an original SVG mark inspired by battery cells, electrical connections and supply networks.
-
-The application should feel like an enterprise product that an EV manufacturer could purchase.
-
----
-
-# PART 4 — APPLICATION PAGES
-
-Build the following fully functional modules.
-
-1. Login.
-2. Executive Control Tower.
-3. Supply Chain Digital Twin.
-4. Supplier Network.
-5. Disruption Intelligence.
-6. AI Agent Operations.
-7. Live Disruption Simulator.
-8. Procurement Management.
-9. Split-Order Optimization.
-10. PLI Compliance.
-11. Risk Intelligence.
-12. Sustainability Intelligence.
-13. What-if Scenario Laboratory.
-14. Approval Center.
-15. Audit Trail.
-16. Executive Reports.
-17. Integration Center.
-18. Settings.
-
-Use a persistent enterprise sidebar and a consistent header.
-
-Provide demo users:
-
-Planner: planner@voltgrid.ai
-Manager: manager@voltgrid.ai
-Auditor: auditor@voltgrid.ai
-
-Create role-based permissions.
-
----
-
-# PART 5 — CONTROL TOWER
-
-Create a live executive dashboard.
-
-KPIs:
-- Total procurement value.
-- Supplier count.
-- Overall risk score.
-- DVA percentage.
-- Inventory coverage.
-- At-risk purchase orders.
-- Financial exposure.
-- Active disruptions.
-- Production uptime.
-- Estimated savings.
-
-Charts:
-- Procurement spend by country.
-- Supplier risk distribution.
-- Domestic versus imported sourcing.
-- Inventory coverage.
-- DVA trend.
-- Risk trend.
-- Component-wise exposure.
-
-Additional sections:
-- Critical alerts.
-- Agent execution feed.
-- Pending approvals.
-- Recent purchase orders.
-- Recent disruptions.
-- System integration status.
-
-All numbers must come from the application database and calculation engine.
-
----
-
-# PART 6 — THREE INDEPENDENT AGENTS
-
-Implement three separate backend agent services.
-
-## AGENT 1: VOLTSENSE
-
-Responsibilities:
-- Detect geopolitical events.
-- Monitor international trade news.
-- Analyze tariff disruptions.
-- Identify port congestion.
-- Parse customs circulars.
-- Extract relevant tariff details.
-- Identify affected suppliers.
-- Calculate financial exposure.
-- Calculate inventory coverage.
-- Estimate stockout risk.
-- Generate disruption events.
-
-Inputs:
-- External news.
-- Uploaded documents.
-- Supplier data.
-- Purchase orders.
-- Inventory.
-- User-created disruption scenarios.
-
-Outputs:
-- Event classification.
-- Affected components.
-- Affected countries.
-- Tariff changes.
-- Supplier exposure.
-- Inventory impact.
-- Risk assessment.
-- Confidence and source metadata.
-
-Create PDF upload and extraction functionality.
-
-Require user verification before treating extracted policy information as confirmed.
-
-## AGENT 2: VOLTROUTE
-
-Responsibilities:
-- Supplier comparison.
-- Supplier selection.
-- Landed cost calculation.
-- Freight cost estimation.
-- Lead-time comparison.
-- Capacity validation.
-- Split-order optimization.
-- Alternative sourcing.
-- Route optimization.
-- Purchase order recommendations.
-
-Implement a genuine optimization algorithm.
-
-Objective:
-
-Minimize total landed cost, delivery delay, concentration risk and quality risk while satisfying demand and compliance constraints.
-
-Consider:
-- Supplier capacity.
-- Minimum order quantities.
-- Quality.
-- Lead times.
-- Tariff exposure.
-- Transportation.
-- Currency.
-- Domestic value addition.
-- Supplier reliability.
-
-Produce an explainable allocation.
-
-Do not simply generate random supplier percentages.
-
-## AGENT 3: VOLTGUARD
-
-Responsibilities:
-- DVA calculation.
-- PLI compliance validation.
-- Supplier eligibility validation.
-- Domestic sourcing monitoring.
-- Purchase order compliance.
-- Policy threshold monitoring.
-- Compliance report generation.
-- Procurement blocking.
-
-Illustrative DVA calculation:
-
-DVA = Eligible Domestic Value / Total Eligible Value × 100
-
-Prototype thresholds:
-- Above 52%: Safe buffer.
-- 50–52%: Warning and review.
-- Below 50%: Critical.
-
-These are configurable demonstration assumptions, not legal advice or a claim about the complete government PLI methodology.
-
-Do not assume all Indian suppliers automatically qualify as domestic value addition.
-
-Maintain explicit eligibility records.
-
-Reject procurement recommendations that violate configured constraints.
-
----
-
-# PART 7 — AGENT ORCHESTRATION
-
-Build a central orchestration engine.
-
-Workflow:
-
-Disruption
-→ VoltSense
-→ Risk Engine
-→ VoltRoute
-→ Supplier Optimization
-→ VoltGuard
-→ Compliance Decision
-→ Human Governance
-→ Mock SAP ERP
-→ Audit Trail
-
-Use structured agent-to-agent messages.
-
-Each agent must have its own:
-- Processing logic.
-- Input.
-- Output.
-- Status.
-- Execution history.
-- Findings.
-- Confidence.
-- Error handling.
-
-Use Socket.IO to stream execution events.
-
-Create an attractive Agent Operations page.
-
-Show:
-- Agent status.
-- Current task.
-- Input received.
-- Findings.
-- Output.
-- Execution duration.
-- Handoff to the next agent.
-- Incident ID.
-
-Do not simulate collaboration using animations alone.
-
-Every displayed agent result must correspond to actual backend execution.
-
----
-
-# PART 8 — RISK INTELLIGENCE ENGINE
-
-Implement a transparent numerical risk engine.
-
-Use configurable weighted factors:
-
-Tariff exposure: 25%.
-Inventory and stockout: 25%.
-Supplier concentration: 15%.
-Geopolitical exposure: 15%.
-Logistics delay: 10%.
-PLI compliance: 10%.
-
-Normalize component scores to 0–100.
-
-Risk classification:
-- 0–29 Low.
-- 30–49 Moderate.
-- 50–69 High.
-- 70–100 Critical.
-
-Display the contribution of every factor.
-
-Calculate:
-- Overall risk.
-- Tariff risk.
-- Stockout probability estimate.
-- Inventory depletion.
-- Supplier concentration.
-- Estimated downtime.
-- Financial exposure.
-- PLI exposure.
-
-Use GenAI to explain the results.
-
-The LLM must not independently invent the numerical risk score.
-
-Provide:
-- AI-generated explanation.
-- Recommended mitigation.
-- Confidence.
-- Evidence.
-- Data freshness.
-- Calculation breakdown.
-
-Provide deterministic explanations if no LLM key is configured.
-
----
-
-# PART 9 — LIVE DISRUPTION SIMULATOR
-
-Create a dedicated simulation workspace.
-
-Scenarios:
-
-1. China tariff shock.
-2. Major port congestion.
-3. Supplier bankruptcy.
-4. INR depreciation.
-5. PLI compliance threat.
-6. Combined geopolitical crisis.
-
-Allow users to configure:
-- Tariff increase.
-- Delay days.
-- Currency depreciation.
-- Supplier capacity reduction.
-- Inventory levels.
-- Production demand.
-
-On triggering:
-1. Create incident.
-2. Execute VoltSense.
-3. Calculate risk.
-4. Execute VoltRoute.
-5. Calculate supplier allocation.
-6. Execute VoltGuard.
-7. Validate DVA.
-8. Evaluate governance.
-9. Create approval request if necessary.
-10. Update the simulated ERP after approval.
-11. Record the audit trail.
-
-Include:
-- Trigger disruption.
-- Reset simulation.
-- Execution timeline.
-- Before/after comparison.
-- Financial impact.
-- Production impact.
-- Risk reduction.
-- Compliance result.
-
-Ensure deterministic outcomes for identical input data.
-
----
-
-# PART 10 — SUPPLY CHAIN DIGITAL TWIN
-
-Create a geographical digital twin.
-
-Use Leaflet and OpenStreetMap.
-
-Display:
-- Chakan plant.
-- Domestic suppliers.
-- International suppliers.
-- Ports.
-- Shipment routes.
-- Alternative suppliers.
-- Disrupted locations.
-
-Create dynamic network states:
-- Healthy.
-- Warning.
-- Critical.
-- Disrupted.
-
-Use animated route indicators where practical.
-
-Clicking a supplier displays its profile and live simulated risk.
-
-Clicking a disrupted route displays:
-- Estimated delay.
-- Affected components.
-- Financial exposure.
-- Alternative routing.
-
-Allow the user to switch between:
-- Geographic view.
-- Supplier dependency view.
-- Component flow view.
-- Disruption impact view.
-
-Clearly label estimated and simulated geographical information.
-
----
-
-# PART 11 — WHAT-IF SCENARIO LABORATORY
-
-Build an interactive scenario comparison workspace.
-
-Allow users to create and compare:
-
-Scenario A: Existing procurement.
-Scenario B: Cost optimized.
-Scenario C: Domestic-heavy sourcing.
-Scenario D: Lowest risk.
-Scenario E: Custom sourcing strategy.
-
-Compare:
-- Landed cost.
-- DVA.
-- Risk score.
-- Supplier concentration.
-- Inventory coverage.
-- Delivery time.
-- Stockout exposure.
-- Carbon emissions.
-- Financial savings.
-
-Use sliders and controls.
-
-Recalculate results whenever parameters change.
-
-Allow scenario saving and comparison.
-
-Explain trade-offs.
-
-Do not automatically select the cheapest strategy if it violates compliance or production requirements.
-
----
-
-# PART 12 — SUSTAINABILITY INTELLIGENCE
-
-Build a sustainability module.
-
-Track estimated CO2 emissions across:
-- Supplier manufacturing.
-- Transportation.
-- Air freight.
-- Sea freight.
-- Road transport.
-- Domestic versus imported sourcing.
-
-Allow configurable emissions factors.
-
-Compare environmental impact between sourcing strategies.
-
-Display:
-- Estimated CO2e per component.
-- Total procurement emissions.
-- Transport emissions.
-- Emissions per battery pack.
-- Domestic sourcing impact.
-- Low-carbon alternative recommendations.
-
-Use clear methodology and source labels.
-
-Do not claim that estimated values are verified carbon accounting measurements.
-
-Allow sustainability impact to become an additional optimization objective.
-
-Show a three-dimensional decision trade-off:
-
-Cost versus Risk versus Sustainability.
-
----
-
-# PART 13 — PROCUREMENT
-
-Create a functional procurement module.
-
-Features:
-- View purchase orders.
-- Create orders.
-- Edit orders.
-- Cancel orders.
-- Supplier comparison.
-- Split-order recommendations.
-- Allocation history.
-- Approval status.
-- PO export.
-- Order version history.
-
-All changes must persist.
-
----
-
-# PART 14 — HUMAN-IN-THE-LOOP GOVERNANCE
-
-Implement approval workflows.
+### 3.4 AI Agent Operations
 
-Autonomous execution zone:
-- Cost variance below ₹5 lakh.
-- DVA above 52%.
-- Supplier quality and capacity validated.
-- No critical policy violation.
+Shows the three backend services—VoltSense, VoltRoute, and VoltGuard—and the incident execution history. A run records agent outputs and displays their sequence. These are deterministic application services and rules, not independent autonomous LLM agents.
 
-Human escalation:
-- Cost variance above ₹5 lakh.
-- DVA approaching the 50% threshold.
-- Critical supplier exposure.
-- Critical compliance violations.
+### 3.5 Risk & PLI Compliance
 
-These are configurable prototype governance rules.
+Shows the latest scenario risk assessment, its six weighted factors, an illustrative DVA gauge, and eligible supplier records. The factors are tariff exposure (25%), inventory/stockout (25%), supplier concentration (15%), geopolitical exposure (15%), logistics delay (10%), and PLI/DVA exposure (10%). A provider explanation can use SAP Generative AI Hub when configured; rule-based, database-grounded answers are available with the fallback provider.
 
-Approval cards must contain:
-- Incident ID.
-- Financial impact.
-- Existing sourcing.
-- Proposed sourcing.
-- DVA.
-- Risk reduction.
-- AI explanation.
-- Compliance result.
+The demonstration DVA bands are SAFE above 52%, WARNING from 50% through 52%, and CRITICAL below 50%. They are configurable prototype assumptions, not legal advice or an authoritative PLI calculation.
 
-Actions:
-- Approve.
-- Reject.
-- Request revision.
+### 3.6 Approval Center (HITL)
 
-On approval:
-- Update simulated ERP.
-- Update purchase orders.
-- Update allocation records.
-- Save approver.
-- Save timestamp.
-- Record audit event.
+Lists scenario approvals with before/after sourcing context, financial delta, DVA impact, risk indicators, and the VoltGuard result. Meera can approve, reject, or request a revision. Approval persists locally and initiates the configured SAP synchronization workflow; rejection and revision requests are recorded without creating an approved reallocation.
 
-On rejection:
-- Keep existing orders unchanged.
-- Record the rejection.
-- Allow re-optimization.
+### 3.7 SAP Extension & Audit
 
----
+Shows live-versus-fallback SAP connection status, permits a connection test, exposes the latest generated approval payload, and displays the governance audit log. It provides audit CSV export and a PDF summary report.
 
-# PART 15 — PLI COMPLIANCE
+## 4. Disruption and decision workflow
 
-Build a complete compliance dashboard.
+The current simulator runs this backend workflow:
 
-Display:
-- Current DVA.
-- Target threshold.
-- Safety buffer.
-- Imported sourcing.
-- Domestic sourcing.
-- Component contribution.
-- Eligibility records.
-- Compliance history.
-- Risk exposure.
-- Audit documents.
+1. Create a disruption event and incident from user-selected scenario inputs.
+2. VoltSense reads supplier and inventory data through the SAP gateway, identifies affected suppliers/components, and labels the scenario source as unverified simulation input.
+3. The deterministic risk engine calculates a weighted risk score and stores its factor breakdown.
+4. VoltRoute ranks available suppliers and proposes a split allocation using a weighted heuristic over landed-cost estimate, quality, reliability, lead time, concentration, domestic sourcing, and the selected strategy.
+5. VoltGuard evaluates the proposed DVA against the 50% target and 52% safe buffer.
+6. The system records agent executions, risk and compliance assessments, allocations, incident status, and an audit event. Commercial or compliance conditions can create a pending human approval.
+7. Meera's approval creates local purchase-order records and attempts SAP synchronization when configured. SAP sync results and the generated payload are recorded in the audit trail.
 
-Generate downloadable compliance reports.
+The allocation logic is a deterministic prototype heuristic, not a mathematical solver or a production purchasing recommendation. Identical inputs and seed data should produce repeatable outcomes.
 
-Clearly distinguish prototype calculations from verified legal compliance.
+## 5. Integrations and data-source behavior
 
----
+### SAP Side-by-Side gateway
 
-# PART 16 — EXTERNAL API INTEGRATIONS
+The backend has adapters for SAP S/4HANA, Ariba, IBP, and Build Process Automation.
 
-Implement these integrations using backend adapters.
+- `SAP_MODE="auto"` uses a configured live endpoint where available and otherwise uses seeded local records.
+- `SAP_MODE="fallback"` selects Local Sandbox Only.
+- The SAP Data Routing settings control the in-memory mode for the running backend.
+- Connection status distinguishes live SAP responses from local fallback. A connection is not labelled live unless a live request succeeds.
+- SAP request timeouts are bounded by `SAP_TIMEOUT_MS` and capped at 2500 ms.
+- S/4HANA may use an API Hub key or bearer token. Ariba and IBP use configured endpoint URLs and bearer tokens. Build Process Automation uses a webhook URL and bearer token; the connection test does not invoke the webhook.
+- Live purchase-order writes are disabled by default. Enabling them requires `SAP_ALLOW_LIVE_WRITE="true"` and configured company code, purchasing organization, purchasing group, and plant mappings.
+- Local approval persistence is retained if a live SAP synchronization fails. Demo supplier and plant codes are not guaranteed to exist in a connected tenant.
 
-A. FRANKFURTER API
+### Other external data
 
-Website: https://frankfurter.dev/
+- Currency conversion requests Frankfurter on demand and returns a deterministic estimate when the request is unavailable.
+- The news and weather endpoints currently return illustrative demo signals; they are not live GDELT or Open-Meteo ingestion.
+- The supplier map uses OpenStreetMap tiles. Supplier, plant, and port coordinates remain illustrative seed data.
+- External signals, estimates, and user-entered disruption scenarios require verification before operational use.
 
-Use:
-- Currency reference rates.
-- USD/INR.
-- EUR/INR.
-- Currency conversion in landed-cost calculations.
+### AI explanations
 
-No API key required for standard access.
+The backend supports SAP Generative AI Hub through SAP's orchestration SDK. Configure `LLM_PROVIDER="sap-genai-hub"`, `SAP_GENAI_MODEL`, and an AI Core service key in `backend\.env`. The deterministic `LLM_PROVIDER="fallback"` option does not require an external model. Keep all service keys on the backend and out of source control. Provider configuration or request failures are returned as errors rather than presented as successful generated answers.
 
-B. GDELT PROJECT
+## 6. Data model and persistence
 
-Website: https://www.gdeltproject.org/
+The local prototype uses Prisma with SQLite. The schema contains:
 
-Use:
-- International trade news.
-- Geopolitical news.
-- Sanctions-related coverage.
-- Port and logistics news.
+- Business/reference data: User, Plant, Supplier, Component, BOM, Inventory, and PurchaseOrder/PurchaseOrderItem.
+- Disruption and decisions: DisruptionEvent, Incident, AgentExecution, RiskAssessment, SupplierAllocation, ComplianceAssessment, and Approval.
+- Evidence and operations: AuditLog, UploadedDocument, ExternalDataSource, SimulationScenario, and SustainabilityRecord.
 
-Use the DOC 2.0 API where available.
+The seed creates one Chakan plant, 14 suppliers, six components, inventory, six purchase orders, illustrative disruptions, integration-source records, and demo users.
 
-Respect request pacing and caching.
+**Data safety:** Preserve `backend/prisma/schema.prisma` and existing seeded data. Do not run destructive migrations, drop tables, or reset a database containing data that must be kept. `npm run setup` invokes `prisma db push` and then the seed script; the seed script deletes and recreates several records. Run setup only for a new or intentionally disposable local database. Back up any database before changing its schema or reseeding it.
 
-Treat news as signals requiring verification, not official tariff notifications.
+## 7. Technology and repository structure
 
-C. OPEN-METEO
+- Frontend: React 19, Vite, JavaScript, React Router, custom CSS, Recharts, Leaflet, and Lucide.
+- Backend: Node.js, Express, Socket.IO, Prisma, and SQLite.
+- Integrations: SAP AI SDK for orchestration, SAP extension adapters, PDFKit for PDF output, Multer for uploads, and PapaParse in the backend dependencies.
+- Workspace scripts are defined in the root, `frontend`, and `backend` package manifests.
 
-Website: https://open-meteo.com/
+Main implementation locations:
 
-Use:
-- Weather information.
-- Severe weather indicators.
-- Port and supplier region disruption context.
+```text
+frontend/src/App.jsx                 Seven-module shell and page flows
+frontend/src/styles.css              SAP Fiori / industrial enterprise styling
+backend/src/server.js                HTTP routes and incident orchestration
+backend/src/agents/                  VoltSense, VoltRoute, and VoltGuard
+backend/src/engines/risk.js           Weighted risk calculation
+backend/src/services/optimization.js Supplier-allocation heuristic
+backend/src/integrations/sap/         SAP adapters and local fallback
+backend/src/services/sapGenAiHub.js   SAP Generative AI Hub integration
+backend/prisma/schema.prisma         SQLite data model
+backend/prisma/seed.js               Illustrative demo records
+backend/test/                         Focused backend tests
+```
 
-Respect applicable usage and attribution terms.
+The design uses a crisp SAP Fiori / industrial enterprise palette: navy `#142C43`, blue `#1769AA`, electric blue `#16A6D9`, green `#26966B`, amber `#E39A28`, red `#C94B42`, canvas `#F4F7FA`, white `#FFFFFF`, and text `#1C2A38`. Avoid dark neon AI styling.
 
-D. OPENSTREETMAP
+## 8. Local development
 
-Website: https://www.openstreetmap.org/
+From the project root in PowerShell:
 
-Use:
-- Geographical map.
-- Supplier locations.
-- Port locations.
-- Network visualization.
-
-E. OSRM
-
-Website: https://project-osrm.org/
-
-Use:
-- Estimated road routes.
-- Distance estimation.
-- Alternative routes where supported.
-
-Respect public demo server limits.
-
-F. GEMINI
-
-Website: https://ai.google.dev/
-
-Use:
-- Circular summarization.
-- Risk explanation.
-- Scenario analysis.
-- Executive report generation.
-- Natural language procurement queries.
-
-G. GROQ
-
-Website: https://console.groq.com/
-
-Provide as an alternative LLM provider.
-
-API integration requirements:
-- Backend-only keys.
-- Timeout.
-- Retry with backoff.
-- Caching.
-- Rate limiting.
-- Error handling.
-- Data freshness.
-- Source metadata.
-- Deterministic fallback.
-
-Do not make the application dependent on external APIs.
-
-For ULIP and ICEGATE, build future-ready adapter interfaces but do not claim live integration without authorized credentials.
-
----
-
-# PART 17 — GENAI PROCUREMENT ASSISTANT
-
-Add a contextual enterprise assistant.
-
-It should answer questions using actual database context.
-
-Example questions:
-
-- Which supplier is most exposed to the current tariff shock?
-- Why did VoltRoute select this supplier?
-- What happens if the tariff increases by another 10%?
-- Which purchase orders are at risk?
-- How much DVA will remain after the proposed allocation?
-- Which supplier can replace the disrupted Chinese supplier?
-- Which sourcing strategy provides the best resilience?
-- What is the expected financial impact?
-- Generate an executive summary of this incident.
-
-The assistant must:
-- Query actual application data.
-- Use calculation results.
-- Explain assumptions.
-- Cite internal incident and record IDs.
-- Avoid inventing missing records.
-- Clearly distinguish simulated from external verified information.
-
----
-
-# PART 18 — EXECUTIVE REPORTS
-
-Generate professional downloadable PDF and CSV reports.
-
-Report types:
-1. Disruption Impact Report.
-2. Procurement Optimization Report.
-3. PLI Compliance Report.
-4. Supplier Risk Report.
-5. Sustainability Report.
-6. Executive Incident Summary.
-7. Audit Trail Report.
-
-Include:
-- VoltGrid branding.
-- Incident ID.
-- Generation timestamp.
-- Executive summary.
-- Financial exposure.
-- Risk breakdown.
-- Agent findings.
-- Proposed actions.
-- Compliance.
-- Approval status.
-- Data-source classification.
-
----
-
-# PART 19 — AUDIT TRAIL
-
-Implement a comprehensive append-only audit log.
-
-Track:
-- Incident creation.
-- Agent executions.
-- Risk assessments.
-- Supplier allocation.
-- Compliance decisions.
-- Approval decisions.
-- Purchase order modifications.
-- ERP simulation updates.
-- User actions.
-
-Provide:
-- Search.
-- Filters.
-- Date ranges.
-- CSV export.
-- Incident-specific history.
-
-Never silently overwrite previous decisions.
-
----
-
-# PART 20 — SIMULATED SAP ERP ADAPTER
-
-Build a MockSAPConnector.
-
-Provide methods for:
-- Read BOM.
-- Read inventory.
-- Read supplier master.
-- Read purchase orders.
-- Create purchase orders.
-- Update purchase orders.
-- Update delivery schedules.
-- Write compliance records.
-- Write audit logs.
-
-Create an integration status page:
-
-SAP S/4HANA: Simulated.
-SAP Ariba: Simulated.
-SAP IBP: Simulated.
-SAP BTP: Not connected.
-SAP Build: Simulated.
-SAP Analytics Cloud: Simulated.
-
-Maintain a clean adapter architecture for future real SAP integration.
-
-Never falsely claim an actual SAP connection.
-
----
-
-# PART 21 — DATABASE
-
-Create Prisma models:
-
-- User.
-- Role.
-- Plant.
-- Supplier.
-- Component.
-- BOM.
-- Inventory.
-- PurchaseOrder.
-- PurchaseOrderItem.
-- DisruptionEvent.
-- Incident.
-- AgentExecution.
-- RiskAssessment.
-- SupplierAllocation.
-- ComplianceAssessment.
-- Approval.
-- AuditLog.
-- UploadedDocument.
-- ExternalDataSource.
-- SimulationScenario.
-- SustainabilityRecord.
-
-Create relationships, indexes, timestamps and validation.
-
-Seed:
-- One Chakan plant.
-- Fourteen suppliers.
-- Six or more component categories.
-- Multiple purchase orders.
-- Inventory records.
-- Historical disruptions.
-- Supplier reliability.
-- Domestic eligibility records.
-- PLI baseline.
-- Sustainability factors.
-
-Use realistic, consistent illustrative data.
-
-All calculations must use the same source records.
-
----
-
-# PART 22 — GRAND FINALE DEMO MODE
-
-Create a dedicated button:
-
-START GRAND FINALE DEMO.
-
-The complete demo should run through this scenario:
-
-1. Show the populated control tower.
-2. Trigger a 35% tariff shock on imported LFP cells.
-3. Activate VoltSense.
-4. Identify affected suppliers.
-5. Identify affected purchase orders.
-6. Calculate inventory and stockout exposure.
-7. Generate risk assessment.
-8. Activate VoltRoute.
-9. Compare alternative suppliers.
-10. Optimize split orders.
-11. Activate VoltGuard.
-12. Calculate DVA.
-13. Validate PLI safeguards.
-14. Evaluate financial approval threshold.
-15. Generate a human approval card.
-16. Allow the planner to approve.
-17. Update the MockSAPConnector database.
-18. Generate an audit trail.
-19. Refresh all dashboard KPIs.
-20. Show a before-and-after comparison.
-
-The jury should be able to see the complete business transformation.
-
-Make the experience smooth, visual and repeatable.
-
-Do not hardcode the final success values.
-
-The demo must execute the actual application logic.
-
----
-
-# PART 23 — TESTING
-
-Write and execute tests for:
-
-1. Authentication.
-2. Supplier calculations.
-3. Landed cost.
-4. Risk calculation.
-5. Supplier capacity constraints.
-6. Split-order optimization.
-7. DVA calculation.
-8. Compliance rejection.
-9. Approval workflows.
-10. Database persistence.
-11. ERP simulation.
-12. Audit trail.
-13. Scenario reset.
-14. API fallback.
-15. LLM fallback.
-16. Grand Finale Demo.
-
-Use a consistent dataset for repeatability.
-
-Fix failing tests before declaring completion.
-
----
-
-# PART 24 — PROJECT ORGANIZATION
-
-Suggested structure:
-
-voltgrid-ai/
-  frontend/
-    src/
-      components/
-      pages/
-      layouts/
-      hooks/
-      services/
-      styles/
-      assets/
-
-  backend/
-    src/
-      agents/
-      orchestrator/
-      engine/
-      integrations/
-      controllers/
-      routes/
-      middleware/
-      services/
-      utils/
-
-    prisma/
-      schema.prisma/
-      seed.js
-
-  docs/
-    architecture/
-    api/
-    demo/
-
-  PROJECT_SPEC.md
-  PROJECT_STATUS.md
-  README.md
-  .env.example
-  .gitignore
-
-  package.json
-
-You may improve this structure if needed.
-
----
-
-# PART 25 — ENVIRONMENT AND SETUP
-
-Create:
-
-- Root package.json.
-- Frontend package.json.
-- Backend package.json.
-- .env.example.
-- Prisma configuration.
-- Database initialization.
-- Database seed command.
-- Development scripts.
-- Production build script.
-- README.
-
-Expected commands should be simple.
-
-For example:
-
-npm install
+```powershell
+Copy-Item backend\.env.example backend\.env
 npm run setup
 npm run dev
+```
 
-Adapt scripts to the actual project architecture.
+The frontend is served at `http://localhost:5173` and the backend at `http://localhost:4000`. The frontend defaults to `http://localhost:4000/api`; set `VITE_API_BASE` if the API is hosted elsewhere.
 
-Do not assume API keys exist.
+Useful checks:
 
-The application must run in local demo mode without external credentials.
+```powershell
+npm run build
+npm test
+```
 
----
+The root `npm test` command runs the backend's Node.js test suite. Tests currently cover risk calculations, allocation optimization, SAP extension behavior, and SAP Generative AI Hub behavior. The frontend build is provided by Vite.
 
-# PART 26 — IMPLEMENTATION PHASES
+## 9. Current implementation boundaries
 
-Follow these phases in order.
+The following limitations are part of the current baseline and must not be described as completed production features:
 
-PHASE 1:
-Project setup, design system, database, seed data.
+- The seven-module navigation consolidates former standalone areas. Legacy paths redirect to current modules; there is no standalone procurement, sustainability, reports, or settings module.
+- Sustainability values are illustrative; the backend has a sustainability endpoint and schema record, but no dedicated sustainability module in the active navigation.
+- Uploaded PDF/CSV files are stored with basic metadata and a verification flag. The current upload path does not perform reliable PDF/CSV text extraction or policy interpretation.
+- News and weather responses are demo signals, not live event feeds. Currency conversion may be live, with a deterministic fallback.
+- Supplier allocation is a weighted heuristic, not a certified optimization solver.
+- PDF output is a generic illustrative summary. The audit log has CSV export; a complete library of detailed report types is not implemented.
+- The simulation reset endpoint records a reset request but retains seeded ERP and incident data.
+- DVA/PLI, risk exposure, carbon values, supplier coordinates, and other seeded data are illustrative and require independent validation.
+- A live SAP tenant is not required for local use. Without configured credentials/endpoints, SAP screens use local fallback data.
 
-PHASE 2:
-Authentication, dashboard and navigation.
+Never claim a live SAP connection, verified policy event, legal compliance result, audited carbon measurement, or production-ready sourcing recommendation unless the relevant data source and validation have actually been established.
 
-PHASE 3:
-Supplier, inventory and procurement modules.
+## 10. Current acceptance baseline
 
-PHASE 4:
-VoltSense, VoltRoute and VoltGuard.
+The implementation should continue to satisfy these repository-level outcomes:
 
-PHASE 5:
-Risk engine and multi-agent orchestration.
+- The local app starts and exposes the seven defined navigation modules with Meera as the only active persona.
+- The seeded local experience works without SAP or AI-provider credentials.
+- A disruption scenario records the sequential agent outputs, risk breakdown, DVA assessment, allocation, incident status, and audit history.
+- Pending human escalations can be approved, rejected, or returned for revision by Meera.
+- SAP reads use live data only when configured and successful; otherwise the UI identifies the fallback source.
+- SAP purchase-order writes remain opt-in and require explicit master-data configuration.
+- Build and backend tests pass, and errors are surfaced rather than shown as successful integration results.
 
-PHASE 6:
-Disruption simulator and scenario laboratory.
+## 11. Potential future work (not part of the current implementation)
 
-PHASE 7:
-PLI compliance and approval center.
+Only treat these as roadmap candidates until implemented and verified:
 
-PHASE 8:
-Digital twin and sustainability intelligence.
-
-PHASE 9:
-External API adapters and GenAI assistant.
-
-PHASE 10:
-Reports, notifications and audit trail.
-
-PHASE 11:
-Grand Finale Demo Mode.
-
-PHASE 12:
-Testing, debugging, responsiveness and final polish.
-
-After each phase:
-- Run the application.
-- Test implemented functionality.
-- Fix errors.
-- Update PROJECT_STATUS.md.
-- Preserve all previously working features.
-
-Do not stop after any intermediate phase.
-
----
-
-# FINAL ACCEPTANCE CRITERIA
-
-The project is complete only when:
-
-- The entire application launches locally.
-- The dashboard is populated.
-- All three agents execute real business logic.
-- The orchestrator passes structured results between agents.
-- The risk engine calculates scores.
-- Supplier optimization respects constraints.
-- PLI validation can block non-compliant procurement.
-- Human approvals work.
-- ERP simulation updates persistent database records.
-- Audit history is maintained.
-- The digital twin works.
-- Sustainability analytics work.
-- Scenario comparisons work.
-- External API failures do not break the application.
-- GenAI has a deterministic fallback.
-- PDF and CSV reports can be downloaded.
-- Grand Finale Demo Mode executes end to end.
-- All important buttons work.
-- No major console errors remain.
-- Responsive layouts work.
-
-DELIVER A REAL WORKING PRODUCT.
-
-Do not merely describe the implementation.
-
-Do not produce fake integrations.
-
-Do not replace business logic with animations.
-
-Do not stop at a frontend prototype.
-
-The final product should demonstrate how VoltGrid AI makes India's EV battery supply chain more resilient through autonomous sensing, intelligent procurement, compliance safeguards, sustainability intelligence and human-governed ERP execution.
-
-Build it to impress SAP architects, EV manufacturers, procurement executives and the SAP Hackfest Grand Finale jury.
+- Verified external tariff/news ingestion and real document text extraction with user confirmation.
+- A dedicated, methodology-backed sustainability workspace.
+- A validated constrained optimization solver with capacity, MOQ, quality, DVA, and delivery constraints.
+- Richer report types, scenario reset/restore behavior, and broader integration/end-to-end tests.
+- Production-grade SAP tenant onboarding, credential management, monitoring, and operational controls.
