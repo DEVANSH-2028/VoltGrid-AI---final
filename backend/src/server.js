@@ -3,7 +3,6 @@ import express from 'express'
 import cors from 'cors'
 import { createServer } from 'node:http'
 import { Server } from 'socket.io'
-import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import multer from 'multer'
@@ -12,11 +11,35 @@ import { calculateRisk } from './engines/risk.js'
 import { runVoltSense } from './agents/voltSense.js'
 import { runVoltRoute } from './agents/voltRoute.js'
 import { runVoltGuard } from './agents/voltGuard.js'
+import { generateSapGenAiAnswer, SapGenAiConfigurationError } from './services/sapGenAiHub.js'
+import { prisma } from './db/prisma.js'
+import {
+  getApprovals,
+  getAuditLogs,
+  getComponents,
+  getComplianceAssessments,
+  getDisruptions,
+  getExternalDataSources,
+  getIncidents,
+  getPlant,
+  getPlants,
+  getSupplierAllocations,
+  getSuppliers as getFallbackSuppliers,
+} from './integrations/sap/fallbackStore.js'
+import {
+  fetchInventory,
+  fetchPurchaseOrders,
+  fetchSuppliers,
+  getSapStatus,
+  logHumanApprovalWorkflow,
+  setSapMode,
+  syncApprovedReallocation,
+  testSapConnections,
+} from './integrations/sap/sapExtensionGateway.js'
 
 const app = express()
 const httpServer = createServer(app)
 const io = new Server(httpServer, { cors:{ origin:'*' } })
-const prisma = new PrismaClient()
 const port = Number(process.env.PORT || 4000)
 const upload = multer({ storage:multer.memoryStorage(), limits:{ fileSize:10*1024*1024 } })
 
@@ -29,6 +52,10 @@ function auth(req,res,next) {
   try { req.user=jwt.verify(token,process.env.JWT_SECRET||'dev-secret'); next() }
   catch { res.status(401).json({error:'Invalid session'}) }
 }
+function requireMeera(req,res,next) {
+  if(req.user?.email !== 'planner@voltgrid.ai') return res.status(403).json({error:'This action is reserved for Meera Nair.'})
+  next()
+}
 
 function emit(kind,payload) { io.emit('agent:event',{kind,payload,at:new Date().toISOString()}) }
 async function audit(action,entityType,actor,details,incidentId) {
@@ -36,6 +63,20 @@ async function audit(action,entityType,actor,details,incidentId) {
 }
 
 app.get('/api/health',(req,res)=>res.json({status:'ok',database:'SQLite',mode:'LOCAL_DEMO'}))
+app.get('/api/sap/status',auth,requireMeera,(req,res)=>res.json(getSapStatus()))
+app.post('/api/sap/mode',auth,requireMeera,async(req,res)=>{
+  const mode=String(req.body?.mode||'').trim().toLowerCase()
+  if(!['auto','fallback'].includes(mode)) return res.status(400).json({error:'SAP mode must be "auto" or "fallback".'})
+  const config=setSapMode(mode)
+  let auditWarning=null
+  try { await audit('SAP_MODE_CHANGED','SAP_EXTENSION','Meera Nair',{mode:config.mode},null) }
+  catch(error) {
+    auditWarning='Routing mode changed in memory, but the Audit Log could not be updated.'
+    console.error('SAP mode change audit failed:',error?.message||'database error')
+  }
+  res.json({...getSapStatus(),auditWarning})
+})
+app.post('/api/sap/test-connection',auth,requireMeera,async(req,res)=>res.json(await testSapConnections()))
 app.post('/api/auth/login',async(req,res)=>{
   const {email,password}=req.body
   const user=await prisma.user.findUnique({where:{email}})
@@ -46,11 +87,14 @@ app.post('/api/auth/login',async(req,res)=>{
 app.get('/api/auth/me',auth,(req,res)=>res.json({user:req.user}))
 
 app.get('/api/dashboard',async(req,res)=>{
-  const [suppliers,components,plant,orders,disruptions,incidents,approvals,inventory] = await Promise.all([
-    prisma.supplier.findMany(),prisma.component.findMany(),prisma.plant.findFirst(),prisma.purchaseOrder.findMany({include:{supplier:true,items:{include:{component:true}}}}),
-    prisma.disruptionEvent.findMany({orderBy:{createdAt:'desc'},take:6}),prisma.incident.findMany({orderBy:{createdAt:'desc'},take:5}),
-    prisma.approval.findMany({where:{status:'PENDING'},include:{incident:true},take:5}),prisma.inventory.findMany({include:{component:true}})
+  const [supplierResult,components,plant,orderResult,disruptions,incidents,approvals,inventoryResult] = await Promise.all([
+    fetchSuppliers(),getComponents(prisma),getPlant(prisma),fetchPurchaseOrders(),
+    getDisruptions(prisma),getIncidents(prisma,{orderBy:{createdAt:'desc'},take:5}),
+    getApprovals(prisma,{where:{status:'PENDING'},include:{incident:true},take:5}),fetchInventory()
   ])
+  const suppliers=supplierResult.data
+  const orders=orderResult.data
+  const inventory=inventoryResult.data
   const spendByCountry={}
   orders.forEach(o=>{const country=o.supplier.country||'Unknown';spendByCountry[country]=(spendByCountry[country]||0)+o.totalValue})
   const domestic=orders.filter(o=>o.supplier.domestic).reduce((s,o)=>s+o.totalValue,0)
@@ -66,17 +110,22 @@ app.get('/api/dashboard',async(req,res)=>{
     dvaTrend:[{month:'Jan',dva:49.8},{month:'Feb',dva:51.2},{month:'Mar',dva:50.7},{month:'Apr',dva:53.1},{month:'May',dva:54.6},{month:'Jun',dva:58.4}],
     riskTrend:[{month:'Jan',risk:64},{month:'Feb',risk:61},{month:'Mar',risk:58},{month:'Apr',risk:55},{month:'May',risk:52},{month:'Jun',risk:Math.round(averageRisk)}],
     componentExposure:components.map(c=>({name:c.code,exposure:c.unitCost*8.4})),
-    disruptions,incidents,approvals,orders:orders.slice(0,6),integrations:await prisma.externalDataSource.findMany()
+    disruptions,incidents,approvals,orders:orders.slice(0,6),integrations:await getExternalDataSources(prisma),
+    sapSources:{suppliers:supplierResult.meta,purchaseOrders:orderResult.meta,inventory:inventoryResult.meta}
   })
 })
 
-app.get('/api/suppliers',async(req,res)=>res.json(await prisma.supplier.findMany({orderBy:{riskScore:'desc'}})))
-app.get('/api/suppliers/:id',async(req,res)=>res.json(await prisma.supplier.findUnique({where:{id:req.params.id}})))
-app.get('/api/inventory',async(req,res)=>res.json(await prisma.inventory.findMany({include:{component:true,plant:true}})))
-app.get('/api/components',async(req,res)=>res.json(await prisma.component.findMany()))
-app.get('/api/plants',async(req,res)=>res.json(await prisma.plant.findMany()))
+app.get('/api/suppliers',async(req,res)=>res.json((await fetchSuppliers()).data))
+app.get('/api/suppliers/:id',async(req,res)=>{
+  const supplier=(await fetchSuppliers()).data.find(item=>item.id===req.params.id||item.code===req.params.id)
+  if(!supplier) return res.status(404).json({error:'Supplier not found'})
+  res.json(supplier)
+})
+app.get('/api/inventory',async(req,res)=>res.json((await fetchInventory()).data))
+app.get('/api/components',async(req,res)=>res.json(await getComponents(prisma)))
+app.get('/api/plants',async(req,res)=>res.json(await getPlants(prisma)))
 
-app.get('/api/procurement/orders',async(req,res)=>res.json(await prisma.purchaseOrder.findMany({include:{supplier:true,plant:true,items:{include:{component:true,supplier:true}}},orderBy:{createdAt:'desc'}})))
+app.get('/api/procurement/orders',async(req,res)=>res.json((await fetchPurchaseOrders()).data))
 app.post('/api/procurement/orders',auth,async(req,res)=>{
   const {supplierId,componentId,quantity,unitCost,status}=req.body
   const plant=await prisma.plant.findFirst()
@@ -96,7 +145,7 @@ app.post('/api/procurement/orders/:id/cancel',auth,async(req,res)=>{
   res.json(po)
 })
 
-app.get('/api/incidents',async(req,res)=>res.json(await prisma.incident.findMany({include:{agentExecutions:true,riskAssessments:true,approvals:true,allocations:true,complianceAssessments:true},orderBy:{createdAt:'desc'}})))
+app.get('/api/incidents',async(req,res)=>res.json(await getIncidents(prisma,{include:{agentExecutions:true,riskAssessments:true,approvals:true,allocations:true,complianceAssessments:true},orderBy:{createdAt:'desc'}})))
 app.post('/api/incidents/:id/run',async(req,res)=>{
   const incident=await prisma.incident.findUnique({where:{id:req.params.id}})
   if(!incident) return res.status(404).json({error:'Incident not found'})
@@ -126,12 +175,21 @@ async function executeIncident(incident) {
     await prisma.supplierAllocation.create({data:{incidentId:incident.id,supplierId:item.supplierId,componentId:(await prisma.component.findFirst({where:{code:'LFP-CELL'}})).id,quantity:item.quantity,unitCost:item.unitCost,landedCost:item.landedCost,delayDays:item.delayDays,reason:item.reason}})
   }
 
-  const guard=runVoltGuard(route)
+  const guard=await runVoltGuard(route)
   await prisma.agentExecution.create({data:{incidentId:incident.id,agentName:'VOLTGUARD',status:'COMPLETE',inputJson:JSON.stringify({dva:route.dva}),outputJson:JSON.stringify(guard),confidence:0.98,durationMs:42}})
   await prisma.complianceAssessment.create({data:{incidentId:incident.id,dva:guard.dva,target:50,result:guard.result,detailsJson:JSON.stringify(guard)}})
   emit('VOLTGUARD_COMPLETE',{incidentId:incident.incidentId,compliance:guard})
 
-  const requiresHuman = route.totalValue>500000 || guard.result==='WARNING'||guard.result==='CRITICAL'||risk.overallRisk>=70
+  const severeCommercialShock =
+    incident.type==='COMBINED' ||
+    incident.tariffIncrease>=30 ||
+    incident.delayDays>=14 ||
+    route.totalValue>500000
+  const requiresHuman =
+    severeCommercialShock ||
+    guard.result==='WARNING' ||
+    guard.result==='CRITICAL' ||
+    risk.overallRisk>=70
   const approval=await prisma.approval.create({data:{incidentId:incident.id,status:requiresHuman?'PENDING':'APPROVED',financialImpact:route.totalValue,proposedJson:JSON.stringify(route),decisionNote:requiresHuman?'Human governance review required':'Autonomous execution zone'}})
   if(!requiresHuman) await prisma.incident.update({where:{id:incident.id},data:{status:'APPROVED'}})
   else await prisma.incident.update({where:{id:incident.id},data:{status:'AWAITING_APPROVAL'}})
@@ -152,40 +210,102 @@ app.post('/api/simulator/reset',auth,async(req,res)=>{
   res.json({status:'RESET',message:'Seed ERP and incident state retained; create a new scenario to run from baseline'})
 })
 
-app.get('/api/approvals',async(req,res)=>res.json(await prisma.approval.findMany({include:{incident:{include:{riskAssessments:true,complianceAssessments:true,allocations:{include:{supplier:true}}}}},orderBy:{createdAt:'desc'}})))
-app.post('/api/approvals/:id/:action',auth,async(req,res)=>{
+app.get('/api/approvals',async(req,res)=>res.json(await getApprovals(prisma,{include:{incident:{include:{riskAssessments:true,complianceAssessments:true,allocations:{include:{supplier:true}}}}},orderBy:{createdAt:'desc'}})))
+app.post('/api/approvals/:id/:action',auth,requireMeera,async(req,res)=>{
   if(!['approve','reject','revise'].includes(req.params.action)) return res.status(400).json({error:'Invalid action'})
-  const approval=await prisma.approval.findUnique({where:{id:req.params.id},include:{incident:true}})
+  const approval=await prisma.approval.findUnique({
+    where:{id:req.params.id},
+    include:{incident:{include:{po:{include:{plant:true}},allocations:{include:{supplier:true}}}}},
+  })
   if(!approval) return res.status(404).json({error:'Approval not found'})
+  if(approval.status!=='PENDING') return res.status(409).json({error:'This escalation has already been decided.'})
+  const actor='Meera Nair'
   if(req.params.action==='approve') {
-    await prisma.approval.update({where:{id:approval.id},data:{status:'APPROVED',approverId:req.user.id,decisionNote:req.body.note||'Approved through human governance'}})
-    await prisma.incident.update({where:{id:approval.incidentId},data:{status:'APPROVED'}})
-    const allocations=await prisma.supplierAllocation.findMany({where:{incidentId:approval.incidentId}})
-    for(const allocation of allocations) {
-      const supplier=await prisma.supplier.findUnique({where:{id:allocation.supplierId}})
-      await prisma.purchaseOrder.create({data:{poNumber:`ERP-${String(Date.now()).slice(-8)}-${supplier.code}`,plantId:(await prisma.plant.findFirst()).id,supplierId:supplier.id,status:'APPROVED',totalValue:allocation.landedCost,approvalStatus:'APPROVED',erpSynced:true}})
-    }
+    const allocations=approval.incident.allocations||[]
+    if(!allocations.length) return res.status(409).json({error:'This escalation has no split allocations to approve.'})
+    const sync=await syncApprovedReallocation({
+      approvalRecord:approval,
+      splitAllocations:allocations,
+      persistLocally:odataPayload=>prisma.$transaction(async tx=>{
+        const updatedApproval=await tx.approval.update({where:{id:approval.id},data:{status:'APPROVED',approverId:req.user.id,decisionNote:req.body.note||'Approved through human governance'}})
+        await tx.incident.update({where:{id:approval.incidentId},data:{status:'APPROVED'}})
+        const bySupplier=new Map()
+        for(const allocation of allocations) {
+          const supplier=allocation.supplier
+          if(!bySupplier.has(supplier.id)) bySupplier.set(supplier.id,{supplier,allocations:[]})
+          bySupplier.get(supplier.id).allocations.push(allocation)
+        }
+        const plant=approval.incident.po?.plant||await tx.plant.findFirst()
+        if(!plant) throw new Error('Chakan plant master data is unavailable; approval was not persisted.')
+        const purchaseOrders=[]
+        for(const {supplier,allocations:supplierAllocations} of bySupplier.values()) {
+          const totalValue=supplierAllocations.reduce((sum,item)=>sum+Number(item.landedCost),0)
+          const suffix=String(Date.now()).slice(-8)
+          const lfpComponent=await tx.component.findFirst({where:{code:'LFP-CELL'}})
+          if(!lfpComponent) throw new Error('LFP-CELL component master data is unavailable; approval was not persisted.')
+          const order=await tx.purchaseOrder.create({
+            data:{
+              poNumber:`ERP-${suffix}-${supplier.code}`,
+              plantId:plant.id,
+              supplierId:supplier.id,
+              status:'APPROVED',
+              totalValue,
+              approvalStatus:'APPROVED',
+              erpSynced:false,
+              items:{create:supplierAllocations.map(item=>({
+                componentId:item.componentId||lfpComponent.id,
+                supplierId:supplier.id,
+                quantity:Number(item.quantity),
+                unitCost:Number(item.unitCost),
+              }))},
+            },
+          })
+          purchaseOrders.push(order)
+        }
+        return {approval:updatedApproval,purchaseOrderIds:purchaseOrders.map(order=>order.id),payload:odataPayload}
+      }),
+      markLocallySynced:localResult=>prisma.purchaseOrder.updateMany({
+        where:{id:{in:localResult.purchaseOrderIds}},
+        data:{erpSynced:true},
+      }),
+    })
+    const afterValue=allocations.reduce((sum,item)=>sum+Number(item.landedCost),0)
+    const varianceINR=afterValue-Number(approval.incident.po?.totalValue||0)
+    const workflow=await logHumanApprovalWorkflow({incidentId:approval.incident.incidentId,approver:actor,decision:'APPROVE',varianceINR})
+    await audit('APPROVAL_APPROVE','APPROVAL',actor,{
+      approvalId:approval.id,
+      note:req.body.note,
+      sapSyncSource:sync.meta.source,
+      sapPayload:sync.payload,
+      sapFallbackReason:sync.meta.fallbackReason||null,
+    },approval.incidentId)
+    const updated=await prisma.approval.findUnique({where:{id:approval.id},include:{incident:true}})
+    return res.json({...updated,sapSyncSource:sync.meta.source,sapPayload:sync.payload,sapMeta:sync.meta,workflowMeta:workflow.meta})
   } else {
     await prisma.approval.update({where:{id:approval.id},data:{status:req.params.action==='reject'?'REJECTED':'REVISION_REQUESTED',approverId:req.user.id,decisionNote:req.body.note||req.params.action}})
     await prisma.incident.update({where:{id:approval.incidentId},data:{status:req.params.action==='reject'?'REJECTED':'REVISION_REQUESTED'}})
+    const decision=req.params.action==='reject'?'REJECT':'REQUEST_REVISION'
+    const workflow=await logHumanApprovalWorkflow({incidentId:approval.incident.incidentId,approver:actor,decision,varianceINR:0})
+    await audit(`APPROVAL_${req.params.action.toUpperCase()}`,'APPROVAL',actor,{approvalId:approval.id,note:req.body.note,sapSyncSource:'NOT_APPLICABLE'},approval.incidentId)
+    const updated=await prisma.approval.findUnique({where:{id:approval.id},include:{incident:true}})
+    return res.json({...updated,workflowMeta:workflow.meta})
   }
-  await audit(`APPROVAL_${req.params.action.toUpperCase()}`,'APPROVAL',req.user.email,{approvalId:approval.id,note:req.body.note},approval.incidentId)
-  res.json(await prisma.approval.findUnique({where:{id:approval.id},include:{incident:true}}))
 })
 
 app.get('/api/compliance',async(req,res)=>{
-  const assessments=await prisma.complianceAssessment.findMany({include:{incident:true},orderBy:{createdAt:'desc'},take:20})
-  res.json({target:50,safeBuffer:52,currentDva:assessments[0]?.dva||58.4,assessments,suppliers:await prisma.supplier.findMany({where:{dvaEligible:true}})})
+  const assessments=await getComplianceAssessments(prisma,{include:{incident:true},orderBy:{createdAt:'desc'},take:20})
+  const suppliers=(await getFallbackSuppliers(prisma)).filter(supplier=>supplier.dvaEligible)
+  res.json({target:50,safeBuffer:52,currentDva:assessments[0]?.dva||58.4,assessments,suppliers})
 })
 app.get('/api/audit',async(req,res)=>{
   const {incidentId,action,q}=req.query
-  const logs=await prisma.auditLog.findMany({where:{AND:[incidentId?{incidentId:String(incidentId)}:{},action?{action:{contains:String(action),mode:'insensitive'}}:{}]},orderBy:{createdAt:'desc'},take:500})
+  const logs=await getAuditLogs(prisma,{where:{AND:[incidentId?{incidentId:String(incidentId)}:{},action?{action:{contains:String(action),mode:'insensitive'}}:{}]},orderBy:{createdAt:'desc'},take:500})
   res.json(logs)
 })
 app.get('/api/audit/export',async(req,res)=>{
   res.setHeader('Content-Type','text/csv')
   res.setHeader('Content-Disposition','attachment; filename="voltgrid-audit.csv"')
-  const logs=await prisma.auditLog.findMany({orderBy:{createdAt:'desc'}})
+  const logs=await getAuditLogs(prisma,{orderBy:{createdAt:'desc'}})
   res.send('timestamp,action,entityType,actor,details\n'+logs.map(l=>`"${l.createdAt.toISOString()}","${l.action}","${l.entityType}","${l.actor}","${l.detailsJson.replace(/"/g,'""')}"`).join('\n'))
 })
 
@@ -197,17 +317,16 @@ app.post('/api/documents/upload',upload.single('document'),async(req,res)=>{
 })
 app.post('/api/documents/:id/verify',auth,async(req,res)=>res.json(await prisma.uploadedDocument.update({where:{id:req.params.id},data:{verified:true}})))
 
-app.get('/api/twin',async(req,res)=>res.json({plant:await prisma.plant.findFirst(),suppliers:await prisma.supplier.findMany(),ports:[{name:'Nhava Sheva',city:'Mumbai',latitude:18.95,longitude:72.95,status:'WARNING'},{name:'Mundra',city:'Gujarat',latitude:22.84,longitude:69.72,status:'HEALTHY'}]}))
+app.get('/api/twin',async(req,res)=>res.json({plant:await getPlant(prisma),suppliers:(await fetchSuppliers()).data,ports:[{name:'Nhava Sheva',city:'Mumbai',latitude:18.95,longitude:72.95,status:'WARNING'},{name:'Mundra',city:'Gujarat',latitude:22.84,longitude:69.72,status:'HEALTHY'}]}))
 app.get('/api/sustainability',async(req,res)=>{
-  const suppliers=await prisma.supplier.findMany()
-  const components=await prisma.component.findMany()
+  const suppliers=await getFallbackSuppliers(prisma)
+  const components=await getComponents(prisma)
   const totalCo2=components.reduce((s,c)=>s+c.co2PerUnit*1000,0)
   res.json({totalCo2Kg:Math.round(totalCo2),co2PerPack:Math.round(totalCo2/800),domesticCo2Kg:Math.round(totalCo2*0.44),transportCo2Kg:Math.round(totalCo2*0.31),methods:components.map(c=>({component:c.code,co2PerUnit:c.co2PerUnit,source:'Illustrative factors, not verified carbon accounting'})),alternatives:suppliers.filter(s=>s.domestic).slice(0,5)})
 })
 
 app.post('/api/scenarios/compare',async(req,res)=>{
   const p=req.body
-  const suppliers=await prisma.supplier.findMany()
   const base=await runVoltRoute({demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,inventoryLevel:p.inventoryLevel||100,strategy:p.strategy||'BALANCED'})
   const costVariant=await runVoltRoute({demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,strategy:'COST'})
   const domesticVariant=await runVoltRoute({demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,strategy:'DOMESTIC'})
@@ -215,7 +334,7 @@ app.post('/api/scenarios/compare',async(req,res)=>{
 })
 
 app.get('/api/integrations',async(req,res)=>{
-  res.json(await prisma.externalDataSource.findMany())
+  res.json(await getExternalDataSources(prisma))
 })
 app.get('/api/adapters/currency', async (req,res)=>{
   const base=Number(req.query.amount||1)
@@ -239,13 +358,18 @@ app.get('/api/adapters/weather', async (req,res)=>{
   res.json({source:'Open-Meteo adapter',status:'DEMO_SIGNAL',location:'Chakan, Pune',temperatureC:27,disruptionIndicator:'MODERATE',verified:false})
 })
 app.post('/api/assistant/query',auth,async(req,res)=>{
-  const [suppliers,orders,incidents,allocations]=await Promise.all([
-    prisma.supplier.findMany(),
-    prisma.purchaseOrder.findMany({include:{supplier:true}}),
-    prisma.incident.findMany({include:{riskAssessments:true,complianceAssessments:true,allocations:{include:{supplier:true}}},orderBy:{createdAt:'desc'},take:5}),
-    prisma.supplierAllocation.findMany({include:{supplier:true},orderBy:{createdAt:'desc'},take:20}),
+  const [supplierResult,orderResult,incidents,allocations]=await Promise.all([
+    fetchSuppliers(),
+    fetchPurchaseOrders(),
+    getIncidents(prisma,{include:{riskAssessments:true,complianceAssessments:true,allocations:{include:{supplier:true}}},orderBy:{createdAt:'desc'},take:5}),
+    getSupplierAllocations(prisma,{include:{supplier:true},orderBy:{createdAt:'desc'},take:20}),
   ])
-  const q=String(req.body.question||'').toLowerCase()
+  const suppliers=supplierResult.data
+  const orders=orderResult.data
+  const question=String(req.body.question||'').trim()
+  if(!question) return res.status(400).json({error:'Question is required'})
+  if(question.length>1200) return res.status(400).json({error:'Question must be 1200 characters or fewer'})
+  const q=question.toLowerCase()
   let answer
   const latest=incidents[0]
   const latestRisk=latest?.riskAssessments?.[0]
@@ -284,6 +408,35 @@ app.post('/api/assistant/query',auth,async(req,res)=>{
   } else {
     answer=`VoltGrid found ${suppliers.length} suppliers, ${orders.length} purchase orders and ${incidents.length} recent incident(s). Ask about DVA, tariff exposure, supplier replacement, at-risk POs, financial impact, incident risk, or the latest allocation.`
   }
+
+  const provider=String(process.env.LLM_PROVIDER||'fallback').trim().toLowerCase()
+  let source='Deterministic database-grounded fallback'
+  if(provider==='sap-genai-hub') {
+    const evidence={
+      deterministicSummary:answer,
+      suppliers:suppliers.map(s=>({code:s.code,name:s.name,country:s.country,domestic:s.domestic,dvaEligible:s.dvaEligible,reliability:s.reliability,riskScore:s.riskScore})),
+      atRiskPurchaseOrders:atRiskOrders.map(o=>({poNumber:o.poNumber,status:o.status,approvalStatus:o.approvalStatus,totalValue:o.totalValue,supplier:o.supplier.name,country:o.supplier.country})),
+      recentIncidents:incidents.map(i=>({
+        incidentId:i.incidentId,title:i.title,status:i.status,
+        risk:i.riskAssessments?.[0]?{overallRisk:i.riskAssessments[0].overallRisk,stockoutProbability:i.riskAssessments[0].stockoutProbability,financialExposure:i.riskAssessments[0].financialExposure}:null,
+        compliance:i.complianceAssessments?.[0]?{dva:i.complianceAssessments[0].dva,result:i.complianceAssessments[0].result}:null,
+        allocations:i.allocations?.map(a=>({supplier:a.supplier.name,quantity:a.quantity,landedCost:a.landedCost,reason:a.reason}))||[],
+      })),
+      latestAllocation:latestAllocation?{supplier:latestAllocation.supplier.name,quantity:latestAllocation.quantity,landedCost:latestAllocation.landedCost,reason:latestAllocation.reason}:null,
+    }
+    try {
+      const generated=await generateSapGenAiAnswer({question,evidence})
+      answer=generated.answer
+      source=`SAP Generative AI Hub · ${generated.model}`
+    } catch(error) {
+      if(error instanceof SapGenAiConfigurationError) return res.status(503).json({error:error.message,code:error.code})
+      console.error('SAP Generative AI Hub request failed:',error?.message||'Unknown provider error')
+      return res.status(502).json({error:'SAP Generative AI Hub request failed. Check backend logs, AI Core credentials, orchestration deployment, and model availability.'})
+    }
+  } else if(provider!=='fallback') {
+    return res.status(503).json({error:`Unsupported LLM_PROVIDER "${provider}". Use "sap-genai-hub" or "fallback".`})
+  }
+
   res.json({
     answer,
     citations:[
@@ -291,7 +444,7 @@ app.post('/api/assistant/query',auth,async(req,res)=>{
       ...suppliers.filter(s=>s.riskScore>=85).slice(0,2).map(s=>s.code),
       ...atRiskOrders.slice(0,2).map(o=>o.poNumber),
     ],
-    source:'Deterministic database-grounded fallback',
+    source,
   })
 })
 
