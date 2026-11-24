@@ -23,9 +23,9 @@ The application has one active persona: **Meera Nair**, EV Sourcing Planner · C
 - Meera has end-to-end demo authority, including approval/rejection/revision of escalations, SAP sandbox synchronization, audit-log access, and report export.
 - Do not add additional selectable personas or expose manager/auditor roles in the product UI without an explicit product decision.
 
-## 3. Product experience: seven active modules
+## 3. Product experience: eight active modules
 
-The persistent navigation contains exactly these seven modules. Older URLs redirect to a current module; they do not represent additional active modules.
+The persistent navigation contains exactly these eight modules. Older URLs redirect to a current module; they do not represent additional active modules.
 
 ### 3.1 Executive Control Tower
 
@@ -51,11 +51,15 @@ The demonstration DVA bands are SAFE above 52%, WARNING from 50% through 52%, an
 
 ### 3.6 Approval Center (HITL)
 
-Lists scenario approvals with before/after sourcing context, financial delta, DVA impact, risk indicators, and the VoltGuard result. Meera can approve, reject, or request a revision. Approval persists locally and initiates the configured SAP synchronization workflow; rejection and revision requests are recorded without creating an approved reallocation.
+Lists scenario approvals with before/after sourcing context, financial delta, DVA impact, risk indicators, and the VoltGuard result. Meera can approve, reject, or request a revision. Approval persists in the application database (Neon in deployment) and initiates the configured SAP synchronization workflow; rejection and revision requests are recorded without creating an approved reallocation.
 
 ### 3.7 SAP Extension & Audit
 
 Shows live-versus-fallback SAP connection status, permits a connection test, exposes the latest generated approval payload, and displays the governance audit log. It provides audit CSV export and a PDF summary report.
+
+### 3.8 Sustainability Intelligence
+
+Shows illustrative emissions and sourcing information with source and methodology labels. Values are not verified carbon accounting.
 
 ## 4. Disruption and decision workflow
 
@@ -99,27 +103,28 @@ The backend supports SAP Generative AI Hub through SAP's orchestration SDK. Conf
 
 ## 6. Data model and persistence
 
-The local prototype uses Prisma with SQLite. The schema contains:
+The deployed application uses Prisma with PostgreSQL on Neon. `DATABASE_URL` is the pooled application connection and `DATABASE_URL_UNPOOLED` is the direct migration connection. The existing SQLite database is retained as a read-only, one-time import source. The schema contains:
 
 - Business/reference data: User, Plant, Supplier, Component, BOM, Inventory, and PurchaseOrder/PurchaseOrderItem.
 - Disruption and decisions: DisruptionEvent, Incident, AgentExecution, RiskAssessment, SupplierAllocation, ComplianceAssessment, and Approval.
 - Evidence and operations: AuditLog, UploadedDocument, ExternalDataSource, SimulationScenario, and SustainabilityRecord.
 
-The seed creates one Chakan plant, 14 suppliers, six components, inventory, six purchase orders, illustrative disruptions, integration-source records, and demo users.
+The destructive demo seed creates one Chakan plant, 14 baseline suppliers, six components, inventory, six purchase orders, illustrative disruptions, integration-source records, and demo users. The migrated SQLite dataset contains 43 suppliers, 19 components, and existing incident, approval, FX snapshot, and audit history.
 
-**Data safety:** Preserve `backend/prisma/schema.prisma` and existing seeded data. Do not run destructive migrations, drop tables, or reset a database containing data that must be kept. `npm run setup` invokes `prisma db push` and then the seed script; the seed script deletes and recreates several records. Run setup only for a new or intentionally disposable local database. Back up any database before changing its schema or reseeding it.
+**Data safety:** Preserve existing PostgreSQL data. Prisma migrations are versioned under `backend/prisma/migrations`; do not use `db push`, drop tables, or reseed a database containing data that must be kept. `npm run db:import:sqlite -- --confirm-empty-target` copies the local SQLite records only when every VoltGrid model table in PostgreSQL is empty. The SQLite file is opened read-only. `npm run db:seed:demo` is destructive and must only be used on a disposable database.
 
 ## 7. Technology and repository structure
 
 - Frontend: React 19, Vite, JavaScript, React Router, custom CSS, Recharts, Leaflet, and Lucide.
-- Backend: Node.js, Express, Socket.IO, Prisma, and SQLite.
+- Backend: Node.js, Express, Socket.IO, and Prisma.
+- Persistence: Neon PostgreSQL in deployment; SQLite retained only as a migration source.
 - Integrations: SAP AI SDK for orchestration, SAP extension adapters, PDFKit for PDF output, Multer for uploads, and PapaParse in the backend dependencies.
 - Workspace scripts are defined in the root, `frontend`, and `backend` package manifests.
 
 Main implementation locations:
 
 ```text
-frontend/src/App.jsx                 Seven-module shell and page flows
+frontend/src/App.jsx                 Eight-module shell and page flows
 frontend/src/styles.css              SAP Fiori / industrial enterprise styling
 backend/src/server.js                HTTP routes and incident orchestration
 backend/src/agents/                  VoltSense, VoltRoute, and VoltGuard
@@ -127,7 +132,9 @@ backend/src/engines/risk.js           Weighted risk calculation
 backend/src/services/optimization.js Supplier-allocation heuristic
 backend/src/integrations/sap/         SAP adapters and local fallback
 backend/src/services/sapGenAiHub.js   SAP Generative AI Hub integration
-backend/prisma/schema.prisma         SQLite data model
+backend/prisma/schema.prisma         PostgreSQL data model
+backend/prisma/migrations/           Versioned Prisma SQL migrations
+backend/scripts/import-sqlite-to-neon.js  Guarded one-time data import
 backend/prisma/seed.js               Illustrative demo records
 backend/test/                         Focused backend tests
 ```
@@ -136,15 +143,16 @@ The design uses a crisp SAP Fiori / industrial enterprise palette: navy `#142C43
 
 ## 8. Local development
 
-From the project root in PowerShell:
+From the project root:
 
-```powershell
-Copy-Item backend\.env.example backend\.env
-npm run setup
+```sh
+npm ci
+npm run prisma:generate
+npm run db:migrate:deploy
 npm run dev
 ```
 
-The frontend is served at `http://localhost:5173` and the backend at `http://localhost:4000`. The frontend defaults to `http://localhost:4000/api`; set `VITE_API_BASE` if the API is hosted elsewhere.
+The root `.env.local` is loaded by backend and migration commands and is git-ignored. Use a pooled Neon URL for `DATABASE_URL` and a direct URL for `DATABASE_URL_UNPOOLED`. In development, Vite proxies API and Socket.IO requests to Express; in production, Express serves the built React app and API from one origin.
 
 Useful checks:
 
@@ -159,8 +167,8 @@ The root `npm test` command runs the backend's Node.js test suite. Tests current
 
 The following limitations are part of the current baseline and must not be described as completed production features:
 
-- The seven-module navigation consolidates former standalone areas. Legacy paths redirect to current modules; there is no standalone procurement, sustainability, reports, or settings module.
-- Sustainability values are illustrative; the backend has a sustainability endpoint and schema record, but no dedicated sustainability module in the active navigation.
+- The eight-module navigation consolidates former standalone areas. Legacy paths redirect to current modules; there is no standalone procurement, reports, or settings module.
+- Sustainability values are illustrative and are not verified carbon accounting.
 - Uploaded PDF/CSV files are stored with basic metadata and a verification flag. The current upload path does not perform reliable PDF/CSV text extraction or policy interpretation.
 - News and weather responses are demo signals, not live event feeds. Currency conversion may be live, with a deterministic fallback.
 - Supplier allocation is a weighted heuristic, not a certified optimization solver.

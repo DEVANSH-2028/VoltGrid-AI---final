@@ -6,7 +6,9 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
-    "db:setup": "prisma db push && node prisma/seed.js",
+    "db:setup": "node scripts/prisma-cli.js migrate deploy",
+    "db:migrate:deploy": "node scripts/prisma-cli.js migrate deploy",
+    "db:seed:demo": "node prisma/seed.js",
     "test": "node --test"
   },
   "dependencies": {

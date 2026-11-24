@@ -5,7 +5,7 @@ import { io as createSocket } from 'socket.io-client'
 import { Activity, AlertTriangle, ArrowDownRight, Bot, CheckCircle2, CircleDollarSign, ClipboardCheck, Download, FileCheck2, FileText, FlaskConical, Gauge, LayoutDashboard, Leaf, Menu, Network, PackageCheck, Play, RefreshCw, Settings, ShieldCheck, Split, TriangleAlert, Upload, Users, X } from 'lucide-react'
 import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
-const API = import.meta.env.VITE_API_BASE || 'http://localhost:4000/api'
+const API = import.meta.env.VITE_API_BASE || '/api'
 const colors = ['#1769AA', '#16A6D9', '#26966B', '#E39A28', '#C94B42']
 const MEERA = { id: 'meera-nair', name: 'Meera Nair', email: 'planner@voltgrid.ai', role: 'EV Sourcing Planner • Chakan Plant, Pune' }
 const illustrativeCountrySpend = [

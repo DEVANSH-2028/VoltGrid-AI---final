@@ -1,4 +1,6 @@
-import 'dotenv/config'
+import './config/loadEnv.js'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express from 'express'
 import cors from 'cors'
 import { createServer } from 'node:http'
@@ -41,10 +43,19 @@ import { getCurrencyRate, getFxLatest } from './services/fx.js'
 import { getOllamaStatus, askOllama } from './services/localAi.js'
 
 const app = express()
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const frontendDistPath = path.resolve(__dirname, '../../frontend/dist')
 const httpServer = createServer(app)
 const io = new Server(httpServer, { cors:{ origin:'*' } })
 const port = Number(process.env.PORT || 4000)
 const upload = multer({ storage:multer.memoryStorage(), limits:{ fileSize:10*1024*1024 } })
+const jwtSecret = process.env.JWT_SECRET || 'dev-secret'
+
+if (process.env.NODE_ENV === 'production' && jwtSecret === 'dev-secret') {
+  throw new Error('JWT_SECRET must be set to a private value in production.')
+}
 
 app.use(cors())
 app.use(express.json({limit:'2mb'}))
@@ -52,7 +63,7 @@ app.use(express.json({limit:'2mb'}))
 function auth(req,res,next) {
   const token=req.headers.authorization?.replace(/^Bearer /,'')
   if(!token) return res.status(401).json({error:'Authentication required'})
-  try { req.user=jwt.verify(token,process.env.JWT_SECRET||'dev-secret'); next() }
+  try { req.user=jwt.verify(token,jwtSecret); next() }
   catch { res.status(401).json({error:'Invalid session'}) }
 }
 function requireMeera(req,res,next) {
@@ -69,7 +80,15 @@ async function audit(action,entityType,actor,details,incidentId) {
   await prisma.auditLog.create({data:{action,entityType,actor,detailsJson:JSON.stringify(details),incidentId}})
 }
 
-app.get('/api/health',(req,res)=>res.json({status:'ok',database:'SQLite',mode:'LOCAL_DEMO'}))
+app.get('/api/health',async(req,res)=>{
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    res.json({status:'ok',database:'PostgreSQL'})
+  } catch(error) {
+    console.error('Database health check failed:',error?.code||'database error')
+    res.status(503).json({status:'error',database:'unavailable'})
+  }
+})
 app.get('/api/sap/status',auth,requireMeera,(req,res)=>res.json(getSapStatus()))
 app.post('/api/sap/mode',auth,requireMeera,async(req,res)=>{
   const mode=String(req.body?.mode||'').trim().toLowerCase()
@@ -88,7 +107,7 @@ app.post('/api/auth/login',async(req,res)=>{
   const {email,password}=req.body
   const user=await prisma.user.findUnique({where:{email}})
   if(!user || !await bcrypt.compare(password||'',user.password)) return res.status(401).json({error:'Invalid demo credentials'})
-  const token=jwt.sign({id:user.id,name:user.name,email:user.email,role:user.role},process.env.JWT_SECRET||'dev-secret',{expiresIn:'12h'})
+  const token=jwt.sign({id:user.id,name:user.name,email:user.email,role:user.role},jwtSecret,{expiresIn:'12h'})
   res.json({token,user:{id:user.id,name:user.name,email:user.email,role:user.role}})
 })
 app.get('/api/auth/me',auth,(req,res)=>res.json({user:req.user}))
@@ -537,6 +556,23 @@ app.get('/api/reports/:type/pdf',async(req,res)=>{
   doc.text('VoltGrid combines disruption sensing, transparent risk assessment, constrained supplier optimization and human-governed ERP simulation.')
   doc.end()
 })
+app.use('/api',(req,res)=>res.status(404).json({error:'API route not found'}))
+
+app.use(express.static(frontendDistPath))
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET') return next()
+  res.sendFile(path.join(frontendDistPath, 'index.html'), error => {
+    if (error) next(error)
+  })
+})
+
+app.use((error,req,res,next)=>{
+  if(res.headersSent) return next(error)
+  console.error('Request failed:',error?.code||'request error')
+  res.status(500).json({error:'Internal server error'})
+})
 
 io.on('connection',socket=>socket.emit('connected',{status:'READY'}))
-httpServer.listen(port,()=>console.log(`VoltGrid API listening on http://localhost:${port}`))
+const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1'
+httpServer.listen(port,host,()=>console.log(`VoltGrid server listening on port ${port}`))

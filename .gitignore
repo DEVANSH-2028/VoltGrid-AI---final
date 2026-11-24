@@ -7,3 +7,4 @@ dist/
 .env.local
 build/
 backend/prisma/*.db.backup-*
+.neon
