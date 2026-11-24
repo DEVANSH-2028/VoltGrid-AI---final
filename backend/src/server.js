@@ -36,6 +36,9 @@ import {
   syncApprovedReallocation,
   testSapConnections,
 } from './integrations/sap/sapExtensionGateway.js'
+import { getNews, getWeather } from './services/dataAdapters.js'
+import { getCurrencyRate, getFxLatest } from './services/fx.js'
+import { getOllamaStatus, askOllama } from './services/localAi.js'
 
 const app = express()
 const httpServer = createServer(app)
@@ -58,6 +61,10 @@ function requireMeera(req,res,next) {
 }
 
 function emit(kind,payload) { io.emit('agent:event',{kind,payload,at:new Date().toISOString()}) }
+function csvEscape(value) {
+  const text=value==null?'':String(value)
+  return `"${text.replace(/"/g,'""')}"`
+}
 async function audit(action,entityType,actor,details,incidentId) {
   await prisma.auditLog.create({data:{action,entityType,actor,detailsJson:JSON.stringify(details),incidentId}})
 }
@@ -96,6 +103,7 @@ app.get('/api/dashboard',async(req,res)=>{
   const orders=orderResult.data
   const inventory=inventoryResult.data
   const spendByCountry={}
+  suppliers.forEach(supplier=>{ if(supplier.country) spendByCountry[supplier.country]=spendByCountry[supplier.country]||0 })
   orders.forEach(o=>{const country=o.supplier.country||'Unknown';spendByCountry[country]=(spendByCountry[country]||0)+o.totalValue})
   const domestic=orders.filter(o=>o.supplier.domestic).reduce((s,o)=>s+o.totalValue,0)
   const total=orders.reduce((s,o)=>s+o.totalValue,0)
@@ -116,6 +124,16 @@ app.get('/api/dashboard',async(req,res)=>{
 })
 
 app.get('/api/suppliers',async(req,res)=>res.json((await fetchSuppliers()).data))
+app.get('/api/suppliers/export/csv',async(req,res)=>{
+  const suppliers=(await fetchSuppliers()).data
+  const rows=suppliers.map(s=>[
+    s.code,s.name,s.country,s.region,s.city,s.domestic?'Yes':'No',s.dvaEligible?'Yes':'No',
+    s.qualityScore,s.reliability,s.capacity,s.leadTimeDays,s.tariffRate,s.riskScore,s.status,
+  ].map(csvEscape).join(','))
+  res.setHeader('Content-Type','text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition','attachment; filename="voltgrid_suppliers.csv"')
+  res.send('Supplier ID,Supplier Name,Country,Region,City,Domestic,DVA Eligible,Quality %,Reliability %,Capacity,Lead Time Days,Tariff %,Risk Score,Status\n'+rows.join('\n'))
+})
 app.get('/api/suppliers/:id',async(req,res)=>{
   const supplier=(await fetchSuppliers()).data.find(item=>item.id===req.params.id||item.code===req.params.id)
   if(!supplier) return res.status(404).json({error:'Supplier not found'})
@@ -126,6 +144,15 @@ app.get('/api/components',async(req,res)=>res.json(await getComponents(prisma)))
 app.get('/api/plants',async(req,res)=>res.json(await getPlants(prisma)))
 
 app.get('/api/procurement/orders',async(req,res)=>res.json((await fetchPurchaseOrders()).data))
+app.get('/api/procurement/orders/export/csv',async(req,res)=>{
+  const orders=(await fetchPurchaseOrders()).data
+  const rows=orders.map(o=>[
+    o.poNumber,o.status,o.approvalStatus,o.supplier?.name,o.supplier?.country,o.totalValue,o.createdAt,o.updatedAt,o.erpSynced?'Yes':'No',
+  ].map(csvEscape).join(','))
+  res.setHeader('Content-Type','text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition','attachment; filename="voltgrid_purchase_orders.csv"')
+  res.send('PO Number,Status,Approval Status,Supplier,Country,INR Total,Order Date,Updated Date,SAP Synced\n'+rows.join('\n'))
+})
 app.post('/api/procurement/orders',auth,async(req,res)=>{
   const {supplierId,componentId,quantity,unitCost,status}=req.body
   const plant=await prisma.plant.findFirst()
@@ -166,7 +193,15 @@ async function executeIncident(incident) {
   emit('RISK_COMPLETE',{incidentId:incident.incidentId,risk})
 
   const routeStart=Date.now()
-  const route=await runVoltRoute({demand:incident.demand,tariffIncrease:incident.tariffIncrease,inventoryLevel:incident.inventoryLevel,strategy:'BALANCED'})
+  const route=await runVoltRoute({
+    demand:incident.demand,
+    tariffIncrease:incident.tariffIncrease,
+    currencyDepreciation:incident.currencyDepreciation,
+    fxRate:incident.fxRate,
+    fxSource:incident.fxSource,
+    inventoryLevel:incident.inventoryLevel,
+    strategy:'BALANCED',
+  })
   await prisma.agentExecution.create({data:{incidentId:incident.id,agentName:'VOLTROUTE',status:'COMPLETE',inputJson:JSON.stringify({demand:incident.demand,tariffIncrease:incident.tariffIncrease}),outputJson:JSON.stringify(route),confidence:0.94,durationMs:Date.now()-routeStart}})
   emit('VOLTROUTE_COMPLETE',{incidentId:incident.incidentId,allocation:route.allocation})
 
@@ -200,9 +235,15 @@ async function executeIncident(incident) {
 
 app.post('/api/simulator/trigger',auth,async(req,res)=>{
   const p=req.body
+  const fxRate=Number(p.fxRate)
+  const validFxRate=Number.isFinite(fxRate)&&fxRate>0?fxRate:null
+  const requestedDepreciation=Number(p.currencyDepreciation||0)
+  const currencyDepreciation=Number.isFinite(requestedDepreciation)?Math.max(0,Math.min(500,requestedDepreciation)):0
+  const requestedFxDate=p.fxRetrievedAt?new Date(p.fxRetrievedAt):null
+  const fxRetrievedAt=requestedFxDate&&Number.isFinite(requestedFxDate.getTime())?requestedFxDate:null
   const disruption=await prisma.disruptionEvent.create({data:{type:p.type||'TARIFF',title:p.title||'Custom disruption scenario',description:p.description||'User-configured local disruption simulation',country:p.country||'China',severity:p.tariffIncrease>=35?'CRITICAL':'HIGH',source:'Live disruption simulator',confirmed:false}})
-  const incident=await prisma.incident.create({data:{incidentId:`INC-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(Date.now()).slice(-5)}`,title:p.title||'China tariff shock',status:'CREATED',type:p.type||'TARIFF',tariffIncrease:Number(p.tariffIncrease||35),delayDays:Number(p.delayDays||14),currencyDepreciation:Number(p.currencyDepreciation||0),supplierCapacityReduction:Number(p.supplierCapacityReduction||0),inventoryLevel:Number(p.inventoryLevel||100),demand:Number(p.demand||1000),disruptionEventId:disruption.id}})
-  await audit('INCIDENT_CREATED','INCIDENT',req.user.email,{type:incident.type,tariffIncrease:incident.tariffIncrease},incident.id)
+  const incident=await prisma.incident.create({data:{incidentId:`INC-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(Date.now()).slice(-5)}`,title:p.title||'China tariff shock',status:'CREATED',type:p.type||'TARIFF',tariffIncrease:Number(p.tariffIncrease||35),delayDays:Number(p.delayDays||14),currencyDepreciation,fxRate:validFxRate,fxSource:validFxRate?String(p.fxSource||'Unknown'):null,fxSourceDate:p.fxSourceDate?String(p.fxSourceDate):null,fxRetrievedAt, supplierCapacityReduction:Number(p.supplierCapacityReduction||0),inventoryLevel:Number(p.inventoryLevel||100),demand:Number(p.demand||1000),disruptionEventId:disruption.id}})
+  await audit('INCIDENT_CREATED','INCIDENT',req.user.email,{type:incident.type,tariffIncrease:incident.tariffIncrease,fxRate:incident.fxRate,fxSource:incident.fxSource,currencyDepreciation:incident.currencyDepreciation},incident.id)
   res.status(201).json(await executeIncident(incident))
 })
 app.post('/api/simulator/reset',auth,async(req,res)=>{
@@ -327,35 +368,61 @@ app.get('/api/sustainability',async(req,res)=>{
 
 app.post('/api/scenarios/compare',async(req,res)=>{
   const p=req.body
-  const base=await runVoltRoute({demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,inventoryLevel:p.inventoryLevel||100,strategy:p.strategy||'BALANCED'})
-  const costVariant=await runVoltRoute({demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,strategy:'COST'})
-  const domesticVariant=await runVoltRoute({demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,strategy:'DOMESTIC'})
-  res.json({custom:base,costOptimized:costVariant,domesticHeavy:domesticVariant,lowestRisk:await runVoltRoute({demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,strategy:'LOW_RISK'})})
+  const common={demand:p.demand||1000,tariffIncrease:p.tariffIncrease||35,currencyDepreciation:p.currencyDepreciation||0,fxRate:p.fxRate,fxSource:p.fxSource,inventoryLevel:p.inventoryLevel||100}
+  const base=await runVoltRoute({...common,strategy:p.strategy||'BALANCED'})
+  const costVariant=await runVoltRoute({...common,strategy:'COST'})
+  const domesticVariant=await runVoltRoute({...common,strategy:'DOMESTIC'})
+  res.json({custom:base,costOptimized:costVariant,domesticHeavy:domesticVariant,lowestRisk:await runVoltRoute({...common,strategy:'LOW_RISK'})})
 })
 
 app.get('/api/integrations',async(req,res)=>{
   res.json(await getExternalDataSources(prisma))
 })
-app.get('/api/adapters/currency', async (req,res)=>{
-  const base=Number(req.query.amount||1)
+app.get('/api/fx/latest',async(req,res)=>{
+  const base=String(req.query.base||'USD').toUpperCase()
+  const symbols=String(req.query.symbols||'INR,EUR,CNY').split(',').map(value=>value.trim().toUpperCase()).filter(Boolean)
   try {
-    const response=await fetch('https://api.frankfurter.dev/v1/latest?base=USD&symbols=INR',{signal:AbortSignal.timeout(5000)})
-    if(!response.ok) throw new Error(`Frankfurter status ${response.status}`)
-    const data=await response.json()
-    const rate=Number(data.rates?.INR||83.12)
-    res.json({source:'Frankfurter',rate,convertedInr:Number((base*rate).toFixed(2)),verified:true,at:data.date||new Date().toISOString()})
-  } catch {
-    res.json({source:'Deterministic fallback',rate:83.12,convertedInr:Number((base*83.12).toFixed(2)),verified:false,at:new Date().toISOString()})
+    const data=await getFxLatest(prisma,base,symbols,payload=>io.emit('fx:update',payload),{forceRefresh:req.query.refresh==='true'})
+    res.json(data)
+  } catch(error) {
+    res.status(400).json({error:error.message})
+  }
+})
+app.get('/api/adapters/currency',async(req,res)=>{
+  try {
+    res.json(await getCurrencyRate(prisma,req.query.base||'USD',req.query.quote||'INR',req.query.amount||1,payload=>io.emit('fx:update',payload)))
+  } catch(error) {
+    res.status(400).json({error:error.message})
   }
 })
 app.get('/api/adapters/news', async (req,res)=>{
-  res.json({source:'GDELT adapter',status:'DEMO_SIGNAL',items:[
-    {title:'Illustrative tariff-policy signal',classification:'requires verification',freshness:'Current session'},
-    {title:'Illustrative port-congestion signal',classification:'simulated logistics context',freshness:'Current session'}
-  ]})
+  res.json(await getNews(prisma))
 })
 app.get('/api/adapters/weather', async (req,res)=>{
-  res.json({source:'Open-Meteo adapter',status:'DEMO_SIGNAL',location:'Chakan, Pune',temperatureC:27,disruptionIndicator:'MODERATE',verified:false})
+  const locations=String(req.query.locations||'Chakan').split(',').map(v=>v.trim()).filter(Boolean)
+  res.json(await getWeather(prisma,locations))
+})
+app.get('/api/adapters/ai-status',async(req,res)=>res.json(await getOllamaStatus()))
+
+app.get('/api/maritime/routes',async(req,res)=>{
+  const routes=[
+    {code:'CN-IN-SG',name:'China / Korea / Japan via Singapore',origin:'Shanghai / Busan / Tokyo',destination:'Nhava Sheva / Mundra',distanceKm:7800,transitDays:21,planningCost:1850000,insurancePct:0.12,riskScore:42,status:'MONITOR',sourceLabel:'Planning estimate; not a commercial freight quote',waypoints:[[31.23,121.47],[1.26,103.84],[18.95,72.95],[22.84,69.72]]},
+    {code:'EU-IN-SUEZ',name:'Europe via Suez and Red Sea',origin:'Rotterdam / Hamburg / Antwerp',destination:'Nhava Sheva / Mundra',distanceKm:10500,transitDays:27,planningCost:2400000,insurancePct:0.18,riskScore:68,status:'ELEVATED_RISK',sourceLabel:'Planning estimate; GDELT and AIS evidence must be verified',waypoints:[[51.92,4.48],[36.13,43.15],[29.95,32.56],[12.54,43.33],[18.95,72.95]]},
+    {code:'EU-IN-CAPE',name:'Europe via Cape of Good Hope',origin:'Rotterdam / Hamburg / Antwerp',destination:'Nhava Sheva / Mundra',distanceKm:13500,transitDays:35,planningCost:3200000,insurancePct:0.12,riskScore:48,status:'ALTERNATIVE',sourceLabel:'Planning estimate; maritime transit distance is approximate',waypoints:[[51.92,4.48],[-34.36,18.47],[-25.0,57.0],[18.95,72.95]]},
+    {code:'GULF-IN-HORMUZ',name:'Persian Gulf via Strait of Hormuz',origin:'Jebel Ali / Gulf ports',destination:'India west coast',distanceKm:2100,transitDays:7,planningCost:620000,insurancePct:0.25,riskScore:72,status:'ELEVATED_RISK',sourceLabel:'Planning estimate; traffic and closure require source confirmation',waypoints:[[25.02,55.06],[26.56,56.25],[24.0,58.0],[18.95,72.95]]},
+    {code:'SEA-IN-SG',name:'Vietnam / Malaysia / Indonesia via Singapore',origin:'Ho Chi Minh / Jakarta / Port Klang',destination:'Nhava Sheva / Mundra',distanceKm:5200,transitDays:15,planningCost:1250000,insurancePct:0.10,riskScore:35,status:'MONITOR',sourceLabel:'Planning estimate; not a carrier schedule',waypoints:[[10.82,106.82],[1.26,103.84],[18.95,72.95]]},
+  ]
+  res.json({source:'VoltGrid maritime route catalogue',status:'PLANNING_ESTIMATES',retrievedAt:new Date().toISOString(),routes})
+})
+app.get('/api/maritime/hormuz',async(req,res)=>{
+  try {
+    const response=await fetch('https://hormuz.data-tracking.net/api/summary?hours=24',{signal:AbortSignal.timeout(7000)})
+    if(!response.ok) throw new Error(`Hormuz API HTTP ${response.status}`)
+    const data=await response.json()
+    res.json({source:'Hormuz data-tracking.net',status:'CONNECTED',retrievedAt:new Date().toISOString(),data})
+  } catch(error) {
+    res.json({source:'Hormuz data-tracking.net',status:'OFFLINE',retrievedAt:new Date().toISOString(),data:null,warning:`Source unavailable: ${error.message}. AIS traffic is not fabricated or inferred.`})
+  }
 })
 app.post('/api/assistant/query',auth,async(req,res)=>{
   const [supplierResult,orderResult,incidents,allocations]=await Promise.all([
@@ -434,7 +501,16 @@ app.post('/api/assistant/query',auth,async(req,res)=>{
       return res.status(502).json({error:'SAP Generative AI Hub request failed. Check backend logs, AI Core credentials, orchestration deployment, and model availability.'})
     }
   } else if(provider!=='fallback') {
-    return res.status(503).json({error:`Unsupported LLM_PROVIDER "${provider}". Use "sap-genai-hub" or "fallback".`})
+    if(provider==='ollama'||provider==='auto') {
+      try {
+        const local=await askOllama(`Summarize this database-grounded procurement finding for an executive audience. Do not calculate values or approve purchases. Finding: ${answer}`)
+        if(local) { answer=local.answer; source=local.source }
+      } catch(error) {
+        source='Deterministic database-grounded fallback'
+      }
+    } else {
+      return res.status(503).json({error:`Unsupported LLM_PROVIDER "${provider}". Use "sap-genai-hub", "ollama", "auto", or "fallback".`})
+    }
   }
 
   res.json({

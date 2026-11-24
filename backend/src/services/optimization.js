@@ -1,10 +1,14 @@
-export function optimizeAllocation({ suppliers, demand, tariffIncrease = 0, strategy = 'BALANCED', inventoryLevel = 100 }) {
+export function optimizeAllocation({ suppliers, demand, tariffIncrease = 0, currencyDepreciation = 0, fxRate, fxSource, fxReferenceRate = Number(process.env.FX_PRICING_REFERENCE_RATE || 83.12), strategy = 'BALANCED', inventoryLevel = 100 }) {
+  const referenceRate = Number.isFinite(Number(fxReferenceRate)) && Number(fxReferenceRate) > 0 ? Number(fxReferenceRate) : 83.12
+  const currentRate = Number.isFinite(Number(fxRate)) && Number(fxRate) > 0 ? Number(fxRate) : referenceRate
+  const depreciation = Math.max(0, Number(currencyDepreciation) || 0)
   const candidates = suppliers
     .filter(s => s.capacity > 0)
     .map(s => {
       const baseCost = 42 + (s.domestic ? 2 : 7)
+      const fxMultiplier = s.domestic ? 1 : (currentRate / referenceRate) * (1 + depreciation / 100)
       const tariff = s.country === 'China' ? tariffIncrease : 0
-      const landedCost = baseCost * (1 + tariff / 100) + s.leadTimeDays * 0.12
+      const landedCost = baseCost * fxMultiplier * (1 + tariff / 100) + s.leadTimeDays * 0.12
       const qualityRisk = (100 - s.qualityScore) * 0.45
       const reliabilityRisk = (100 - s.reliability) * 0.40
       const delayRisk = s.leadTimeDays * 0.55
@@ -41,5 +45,11 @@ export function optimizeAllocation({ suppliers, demand, tariffIncrease = 0, stra
   })
   const domesticValue = allocation.filter(a => suppliers.find(s => s.id === a.supplierId)?.domestic).reduce((sum,a)=>sum+a.landedCost,0)
   const totalValue = allocation.reduce((sum,a)=>sum+a.landedCost,0)
-  return { allocation, dva: totalValue ? domesticValue / totalValue * 100 : 0, totalValue, inventoryCoverage: inventoryLevel }
+  return {
+    allocation,
+    dva: totalValue ? domesticValue / totalValue * 100 : 0,
+    totalValue,
+    inventoryCoverage: inventoryLevel,
+    fx: { rate: currentRate, referenceRate, currencyDepreciation: depreciation, source: fxSource || 'Illustrative baseline rate' },
+  }
 }

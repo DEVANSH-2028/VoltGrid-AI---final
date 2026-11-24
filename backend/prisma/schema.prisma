@@ -142,6 +142,10 @@ model Incident {
   tariffIncrease Float @default(0)
   delayDays Int @default(0)
   currencyDepreciation Float @default(0)
+  fxRate Float?
+  fxSource String?
+  fxSourceDate String?
+  fxRetrievedAt DateTime?
   supplierCapacityReduction Float @default(0)
   inventoryLevel Float @default(100)
   demand     Float @default(100)
@@ -284,4 +288,57 @@ model SustainabilityRecord {
   methodology String
   sourceLabel String
   createdAt DateTime @default(now())
+}
+
+model ExchangeRateSnapshot {
+  id          String   @id @default(cuid())
+  base        String
+  quote       String
+  rate        Float
+  source      String
+  sourceDate  String?
+  retrievedAt DateTime @default(now())
+  stale       Boolean  @default(false)
+  @@index([base, quote, retrievedAt])
+}
+
+model ShippingRoute {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  origin       String
+  destination  String
+  distanceKm   Float
+  transitDays  Float
+  planningCost Float
+  insurancePct Float
+  riskScore    Float
+  status       String
+  geometryJson String
+  sourceLabel  String
+  updatedAt    DateTime @updatedAt
+}
+
+model MaritimeSnapshot {
+  id          String   @id @default(cuid())
+  area        String
+  source      String
+  snapshotJson String
+  retrievedAt DateTime @default(now())
+  dataTimestamp String?
+  status      String
+  @@index([area, retrievedAt])
+}
+
+model CarbonEmissionFactor {
+  id          String   @id @default(cuid())
+  category    String
+  name        String
+  value       Float
+  unit        String
+  source      String
+  version     String
+  methodology String
+  retrievedAt DateTime @default(now())
+  @@index([category])
 }

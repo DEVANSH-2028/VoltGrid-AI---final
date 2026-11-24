@@ -32,13 +32,13 @@ test('SAP config defaults to auto and caps HTTP timeout at 2500ms', () => {
   assert.equal(readSapConfig({}).timeoutMs, 2500)
 })
 
-test('empty Prisma reads use the unchanged seeded Chakan supplier and PO defaults', async () => {
+test('empty Prisma reads use the expanded seeded Chakan supplier and PO defaults', async () => {
   const fallbackPrisma = {
     supplier: { findMany: async () => [] },
     purchaseOrder: { findMany: async () => [] },
   }
   const [suppliers, orders] = await Promise.all([getSuppliers(fallbackPrisma), getPurchaseOrders(fallbackPrisma)])
-  assert.equal(suppliers.length, 14)
+  assert.equal(suppliers.length, 43)
   assert.equal(suppliers.find(supplier => supplier.code === 'SUP-IN-01').dvaEligible, true)
   assert.equal(orders.length, 6)
   assert.equal(orders[5].status, 'AT_RISK')

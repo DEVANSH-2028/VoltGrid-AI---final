@@ -1,12 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import L from 'leaflet'
-import { Activity, AlertTriangle, ArrowDownRight, Bot, CheckCircle2, CircleDollarSign, ClipboardCheck, Download, FileCheck2, FileText, FlaskConical, Gauge, LayoutDashboard, Menu, Network, PackageCheck, Play, RefreshCw, Settings, ShieldCheck, Split, TriangleAlert, Upload, Users, X } from 'lucide-react'
+import { io as createSocket } from 'socket.io-client'
+import { Activity, AlertTriangle, ArrowDownRight, Bot, CheckCircle2, CircleDollarSign, ClipboardCheck, Download, FileCheck2, FileText, FlaskConical, Gauge, LayoutDashboard, Leaf, Menu, Network, PackageCheck, Play, RefreshCw, Settings, ShieldCheck, Split, TriangleAlert, Upload, Users, X } from 'lucide-react'
 import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 const API = import.meta.env.VITE_API_BASE || 'http://localhost:4000/api'
 const colors = ['#1769AA', '#16A6D9', '#26966B', '#E39A28', '#C94B42']
 const MEERA = { id: 'meera-nair', name: 'Meera Nair', email: 'planner@voltgrid.ai', role: 'EV Sourcing Planner • Chakan Plant, Pune' }
+const illustrativeCountrySpend = [
+  ['India', 2.8], ['China', 2.9], ['South Korea', 2.7], ['Japan', 2.5], ['United States', 2.6],
+  ['Germany', 2.4], ['France', 2.3], ['Australia', 2.2], ['Vietnam', 2.1], ['Indonesia', 2.4],
+  ['United Arab Emirates', 2.0], ['Malaysia', 2.3], ['Canada', 2.1], ['Netherlands', 2.5], ['Taiwan', 2.6],
+].map(([country, crores]) => ({ country, value: crores * 10000000, source: 'Illustrative planning estimate' }))
 
 async function api(path, options = {}) {
   const token = localStorage.getItem('vg_token')
@@ -24,6 +30,7 @@ const modules = [
   { title: 'Risk & PLI Compliance', path: '/risk-compliance', icon: ShieldCheck },
   { title: 'Approval Center (HITL)', path: '/approvals', icon: ClipboardCheck },
   { title: 'SAP Extension & Audit', path: '/sap-audit', icon: FileCheck2 },
+  { title: 'Sustainability Intelligence', path: '/sustainability', icon: Leaf },
 ]
 
 function Logo() {
@@ -79,6 +86,7 @@ function Status({ value }) { return <span className={`status ${String(value || '
 function Dashboard() {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [spendView, setSpendView] = useState('plan')
   const navigate = useNavigate()
   async function load() { try { setData(await api('/dashboard')); setError('') } catch (e) { setError(e.message) } }
   useEffect(() => { load() }, [])
@@ -92,6 +100,7 @@ function Dashboard() {
   }
   if (!data) return <><PageTitle title="Executive Control Tower" subtitle="Chakan Plant · Live operating overview"/><ErrorMessage error={error} retry={load}/>{!error && <Loading/>}</>
   const k = data.kpis
+  const countrySpend = spendView === 'plan' ? illustrativeCountrySpend : [...data.spendByCountry].sort((a,b)=>b.value-a.value)
   return <>
     <PageTitle title="Executive Control Tower" subtitle="Chakan Plant · Live operating overview" actions={<button className="primary" onClick={startDemo}><Play size={16}/>Activate Crisis Playbook</button>}/>
     <section className="kpis">
@@ -103,7 +112,10 @@ function Dashboard() {
       <Kpi label="At-risk POs" value={k.atRiskPOs} detail={`₹${(k.financialExposure / 10000000).toFixed(1)} Cr exposed`} tone="red" icon={AlertTriangle}/>
     </section>
     <section className="grid-12">
-      <article className="panel span-8"><PanelTitle title="Procurement spend by country" subtitle="Annualized · INR"/><div className="chart"><ResponsiveContainer><BarChart data={data.spendByCountry} margin={{ top: 20, right: 12, left: 8, bottom: 4 }}><XAxis dataKey="country"/><YAxis tickFormatter={value => `₹${(Number(value) / 10000000).toFixed(0)}Cr`}/><Tooltip formatter={value => [`₹${(Number(value) / 10000000).toFixed(2)} Cr`, 'Annualized spend']}/><Bar dataKey="value" fill="#1769AA" radius={[3, 3, 0, 0]}><LabelList dataKey="value" position="top" formatter={value => `₹${(Number(value) / 10000000).toFixed(1)}Cr`} fill="#1C2A38" fontSize={10}/></Bar></BarChart></ResponsiveContainer></div></article>
+      <article className="panel span-8">
+        <PanelTitle title="Procurement spend by country" subtitle={spendView === 'plan' ? '15 markets · 12 supplier countries + 3 candidates · generated estimate, not actual POs' : 'Recorded PO spend · current database · INR'} action={<div className="spend-view-toggle" role="group" aria-label="Country spend view"><button className={spendView === 'plan' ? 'active' : ''} aria-pressed={spendView === 'plan'} onClick={() => setSpendView('plan')}>Planning</button><button className={spendView === 'actual' ? 'active' : ''} aria-pressed={spendView === 'actual'} onClick={() => setSpendView('actual')}>Recorded POs</button></div>}/>
+        <div className="chart country-spend-chart"><ResponsiveContainer><BarChart data={countrySpend} layout="vertical" margin={{ top: 4, right: 55, left: 12, bottom: 4 }}><XAxis type="number" domain={spendView === 'plan' ? [0, 3.2e7] : ['auto', 'auto']} tickFormatter={value => `₹${(Number(value) / 10000000).toFixed(0)}Cr`}/><YAxis type="category" dataKey="country" width={116} tick={{ fontSize: 9 }}/><Tooltip formatter={value => [`₹${(Number(value) / 10000000).toFixed(2)} Cr`, spendView === 'plan' ? 'Illustrative estimate' : 'Recorded PO spend']}/><Bar dataKey="value" fill={spendView === 'plan' ? '#26966B' : '#1769AA'} radius={[0, 3, 3, 0]} barSize={14}><LabelList dataKey="value" position="right" formatter={value => `₹${(Number(value) / 10000000).toFixed(1)}Cr`} fill="#1C2A38" fontSize={9}/></Bar></BarChart></ResponsiveContainer></div>
+      </article>
       <article className="panel span-4"><PanelTitle title="DVA composition" subtitle="Domestic and imported sourcing"/><div className="chart pie"><ResponsiveContainer><PieChart><Pie data={data.sourcing} dataKey="value" innerRadius={55} outerRadius={78} paddingAngle={2}>{data.sourcing.map((item, index) => <Cell key={item.name} fill={colors[index]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer><div className="pie-center"><b>{k.dva}%</b><span>DVA</span></div></div></article>
       <article className="panel span-4"><PanelTitle title="Critical alerts" subtitle="Disruption signals"/><div className="alerts">{data.disruptions.slice(0, 4).map((item, index) => <div className="alert" key={item.id}><div className={`alert-dot ${index ? 'amber' : 'red'}`}/><div><b>{item.title}</b><span>{item.severity} · {item.source}</span></div></div>)}</div></article>
       <article className="panel span-4"><PanelTitle title="Agent execution feed" subtitle="Recent incident activity"/><div className="feed">{data.incidents.slice(0, 4).map(item => <div className="feed-row" key={item.id}><span className="feed-icon"><Bot size={15}/></span><div><b>{item.status}</b><span>{item.incidentId}</span></div></div>)}</div></article>
@@ -165,7 +177,7 @@ function DigitalTwin() {
   if (data.error) return <><PageTitle title="Digital Twin & Suppliers" subtitle="Live network health · Chakan plant"/><ErrorMessage error={data.error} retry={load}/></>
   const selected = data.suppliers.find(supplier => supplier.id === selectedId)
   return <>
-    <PageTitle title="Digital Twin & Suppliers" subtitle={`${data.suppliers.length} suppliers · Chakan plant · map/table selection stays in sync`}/>
+    <PageTitle title="Digital Twin & Suppliers" subtitle={`${data.suppliers.length} suppliers · Chakan plant · map/table selection stays in sync`} actions={<a className="secondary" href={`${API}/suppliers/export/csv`} target="_blank" rel="noreferrer"><Download size={15}/>Export suppliers CSV</a>}/>
     <div className="twin-layout">
       <article className="panel twin-map-panel"><PanelTitle title="Global supplier network" subtitle="Select a marker or supplier row"/><div ref={mapRef} className="leaflet-map" aria-label="Supplier network map"/></article>
       <article className="panel supplier-detail"><PanelTitle title="Selected supplier" subtitle={selected?.code || 'Select a supplier'}/>{selected ? <div className="supplier-summary"><h2>{selected.name}</h2><p>{selected.city}, {selected.country}</p><div className="supplier-metrics"><span>Risk score <b>{Math.round(selected.riskScore)}</b></span><span>Quality <b>{selected.qualityScore}%</b></span><span>Reliability <b>{selected.reliability}%</b></span><span>Lead time <b>{selected.leadTimeDays} days</b></span></div><Status value={selected.status}/><span className={`dva-tag ${selected.dvaEligible ? 'eligible' : 'ineligible'}`}>{selected.dvaEligible ? 'DVA eligible' : 'Not DVA eligible'} · {selected.domestic ? 'Domestic' : 'International'}</span></div> : <div className="empty-small">No suppliers available.</div>}</article>
@@ -182,19 +194,21 @@ function DisruptionLab() {
   const [scenario, setScenario] = useState(null)
   const [strategy, setStrategy] = useState('BALANCED')
   const [document, setDocument] = useState(null)
+  const [currency, setCurrency] = useState(null)
+  const [usdAmount, setUsdAmount] = useState('100')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   async function trigger(preset = {}) {
     setBusy(true); setError('')
     try {
-      const result = await api('/simulator/trigger', { method: 'POST', body: JSON.stringify({ ...params, ...preset, type: preset.type || 'COMBINED', title: preset.title || 'Custom disruption scenario' }) })
+      const result = await api('/simulator/trigger', { method: 'POST', body: JSON.stringify({ ...params, ...preset, fxRate: currency?.rates?.INR?.rate, fxSource: currency?.source, fxSourceDate: currency?.sourceDate, fxRetrievedAt: currency?.retrievedAt, type: preset.type || 'COMBINED', title: preset.title || 'Custom disruption scenario' }) })
       setExecution(result)
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
   async function compare() {
     setBusy(true); setError('')
     try {
-      const payload = { demand: params.demand, tariffIncrease: params.tariffIncrease, inventoryLevel: params.inventoryLevel }
+      const payload = { demand: params.demand, tariffIncrease: params.tariffIncrease, currencyDepreciation: params.currencyDepreciation, fxRate: currency?.rates?.INR?.rate, fxSource: currency?.source, inventoryLevel: params.inventoryLevel }
       const [baseline, custom] = await Promise.all([
         api('/scenarios/compare', { method: 'POST', body: JSON.stringify({ ...payload, strategy: 'BALANCED' }) }),
         strategy === 'BALANCED' ? Promise.resolve(null) : api('/scenarios/compare', { method: 'POST', body: JSON.stringify({ ...payload, strategy }) }),
@@ -224,6 +238,17 @@ function DisruptionLab() {
     try { await api('/simulator/reset', { method: 'POST', body: JSON.stringify({}) }); setExecution(null) }
     catch (e) { setError(e.message) } finally { setBusy(false) }
   }
+  async function loadCurrency(forceRefresh = false) {
+    try { setCurrency(await api(`/fx/latest?base=USD&symbols=INR,EUR,CNY${forceRefresh ? '&refresh=true' : ''}`)) }
+    catch (e) { setError(e.message) }
+  }
+  useEffect(() => {
+    loadCurrency()
+    const socket = createSocket(API.replace(/\/api\/?$/, ''))
+    socket.on('fx:update', setCurrency)
+    const refresh = window.setInterval(() => loadCurrency(), 60000)
+    return () => { window.clearInterval(refresh); socket.off('fx:update', setCurrency); socket.disconnect() }
+  }, [])
   const scenarios = [
     { label: 'Tariff shock · 35%', values: { title: '35% tariff shock — LFP cells', type: 'TARIFF', tariffIncrease: 35 } },
     { label: 'Port delay · 21 days', values: { title: 'Port congestion — 21 day delay', type: 'PORT', delayDays: 21 } },
@@ -232,6 +257,14 @@ function DisruptionLab() {
   const fields = [['tariffIncrease', 'Tariff increase (%)', 100], ['delayDays', 'Logistics delay (days)', 60], ['currencyDepreciation', 'INR depreciation (%)', 100], ['supplierCapacityReduction', 'Supplier capacity reduction (%)', 100], ['inventoryLevel', 'Inventory level (%)', 100], ['demand', 'Production demand (units)', 5000]]
   return <>
     <PageTitle title="Disruption & Split-Order Lab" subtitle="Model supply shocks, verify source documents, and compare resilient allocations"/>
+    {currency && <article className="fx-widget">
+      <div className="fx-primary"><span>USD / INR</span><strong>{currency.rates?.INR?.rate == null ? 'Unavailable' : `₹${Number(currency.rates.INR.rate).toFixed(2)}`}</strong><small>1 USD = {currency.rates?.INR?.rate == null ? '—' : `₹${Number(currency.rates.INR.rate).toFixed(2)}`}</small>{currency.rates?.INR?.changePct != null && <small className={`fx-delta ${currency.rates.INR.changePct >= 0 ? 'up' : 'down'}`}>{currency.rates.INR.changePct >= 0 ? '↑' : '↓'} {Math.abs(currency.rates.INR.changePct).toFixed(2)}% vs previous refresh</small>}</div>
+      <div className="fx-secondary"><span>EUR / INR <b>{currency.rates?.EUR?.rate && currency.rates?.INR?.rate ? `₹${(currency.rates.INR.rate / currency.rates.EUR.rate).toFixed(2)}` : '—'}</b></span><span>CNY / INR <b>{currency.rates?.CNY?.rate && currency.rates?.INR?.rate ? `₹${(currency.rates.INR.rate / currency.rates.CNY.rate).toFixed(2)}` : '—'}</b></span></div>
+      <div className="fx-converter"><label htmlFor="usd-converter">USD converter</label><div><input id="usd-converter" type="number" min="0" step="any" value={usdAmount} onChange={event => setUsdAmount(event.target.value)}/><b>{currency.rates?.INR?.rate && Number.isFinite(Number(usdAmount)) ? `₹${(Number(usdAmount) * currency.rates.INR.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}</b></div></div>
+      <div className="fx-status"><span className={`source-status ${currency.status === 'LIVE' ? 'ready' : currency.status === 'OFFLINE' ? 'offline' : 'warning'}`}>{currency.status === 'LIVE' ? 'Live' : currency.status === 'CACHED' ? 'Cached' : currency.status === 'FALLBACK' ? 'Fallback' : 'Offline'}</span><small>{currency.source}</small><small>{currency.retrievedAt ? new Date(currency.retrievedAt).toLocaleTimeString() : 'No successful rate'} · refreshes every 60s</small>{currency.warning && <small className="settings-error">{currency.warning}</small>}</div>
+      <button className="secondary" onClick={() => loadCurrency(true)}><RefreshCw size={15}/>Refresh now</button>
+      <div className="fx-used">Rate used in this simulation: <b>{currency.rates?.INR?.rate ? `₹${Number(currency.rates.INR.rate).toFixed(2)} / USD` : 'baseline estimate'}</b> · Imported supplier costs are adjusted from the ₹83.12 seed-price baseline; the depreciation control applies an additional scenario change.</div>
+    </article>}
     <div className="tabs" role="tablist">{disruptionTabs.map(name => <button key={name} role="tab" aria-selected={tab === name} className={tab === name ? 'active' : ''} onClick={() => setTab(name)}>{name}</button>)}</div>
     <ErrorMessage error={error}/>
     {tab === disruptionTabs[0] && <>
@@ -328,7 +361,7 @@ function ApprovalCenter() {
   const supplierById = useMemo(() => new Map(suppliers.map(supplier => [supplier.id, supplier])), [suppliers])
   if (!approvals.length && error) return <><PageTitle title="Approval Center (HITL)" subtitle="Meera Nair · direct approval authority"/><ErrorMessage error={error} retry={load}/></>
   return <>
-    <PageTitle title="Approval Center (HITL)" subtitle="Meera Nair · affected POs, before/after split, and direct governance actions"/>
+    <PageTitle title="Approval Center (HITL)" subtitle="Meera Nair · affected POs, before/after split, and direct governance actions" actions={<a className="secondary" href={`${API}/procurement/orders/export/csv`} target="_blank" rel="noreferrer"><Download size={15}/>Export purchase orders CSV</a>}/>
     <ErrorMessage error={error} retry={load}/>
     {!approvals.length ? <div className="panel empty-state"><ClipboardCheck size={28}/><h3>No escalations awaiting review</h3><p>New scenarios requiring human governance will appear here.</p></div> : <div className="approval-list">{approvals.map(approval => {
       const incident = approval.incident || {}
@@ -392,10 +425,63 @@ function SapAudit() {
   </>
 }
 
+function Sustainability() {
+  const [data, setData] = useState(null)
+  const [integrations, setIntegrations] = useState([])
+  const [aiStatus, setAiStatus] = useState(null)
+  const [maritime, setMaritime] = useState(null)
+  const [news, setNews] = useState(null)
+  const [weather, setWeather] = useState(null)
+  const [error, setError] = useState('')
+  async function load() {
+    setError('')
+    const requests = [
+      ['/sustainability', setData],
+      ['/integrations', setIntegrations],
+      ['/adapters/ai-status', setAiStatus],
+      ['/maritime/routes', setMaritime],
+      ['/adapters/news', setNews],
+      ['/adapters/weather?locations=Chakan,Shanghai,Singapore', setWeather],
+    ]
+    const results = await Promise.allSettled(requests.map(([path]) => api(path)))
+    results.forEach((result, index) => { if (result.status === 'fulfilled') requests[index][1](result.value) })
+    if (results.every(result => result.status === 'rejected')) setError('Sustainability data could not be loaded from the backend.')
+  }
+  useEffect(() => { load() }, [])
+  const emissions = data ? [
+    { name: 'Manufacturing', value: data.domesticCo2Kg || 0, fill: '#1769AA' },
+    { name: 'Transport', value: data.transportCo2Kg || 0, fill: '#16A6D9' },
+    { name: 'Other operations', value: Math.max(0, data.totalCo2Kg - data.domesticCo2Kg - data.transportCo2Kg), fill: '#9FB2C2' },
+  ] : []
+  return <>
+    <PageTitle title="Sustainability Intelligence" subtitle="Chakan plant · carbon inventory and sourcing exposure" actions={<button className="secondary" onClick={load}><RefreshCw size={15}/>Refresh data</button>}/>
+    <ErrorMessage error={error} retry={load}/>
+    <section className="sust-notice"><Leaf size={18}/><div><b>Illustrative operational view</b><span>Carbon values are planning estimates, not a verified life-cycle assessment or published sustainability report.</span></div><span className="method-tag">METHOD v1 · DEMONSTRATION</span></section>
+    {data && <section className="sust-kpis">
+      <article><div className="sust-kpi-icon blue"><Leaf size={18}/></div><div><span>Manufacturing footprint</span><strong>{Math.round(data.totalCo2Kg).toLocaleString('en-IN')} <small>kg CO2e</small></strong><p>Illustrative battery production</p></div></article>
+      <article><div className="sust-kpi-icon cyan"><Gauge size={18}/></div><div><span>Estimated per pack</span><strong>{Math.round(data.co2PerPack).toLocaleString('en-IN')} <small>kg CO2e</small></strong><p>Planning estimate per unit</p></div></article>
+      <article><div className="sust-kpi-icon green"><ShieldCheck size={18}/></div><div><span>Domestic allocation</span><strong>{Math.round(data.domesticCo2Kg).toLocaleString('en-IN')} <small>kg CO2e</small></strong><p>Domestic supply path</p></div></article>
+      <article><div className="sust-kpi-icon amber"><Activity size={18}/></div><div><span>Transport footprint</span><strong>{Math.round(data.transportCo2Kg).toLocaleString('en-IN')} <small>kg CO2e</small></strong><p>Planning freight estimate</p></div></article>
+    </section>}
+    <section className="sust-main-grid">
+      <article className="panel sust-emissions"><PanelTitle title="Carbon footprint mix" subtitle="Illustrative emissions contribution"/><div className="sust-chart-layout"><div className="sust-donut"><ResponsiveContainer><PieChart><Pie data={emissions} dataKey="value" innerRadius={58} outerRadius={82} paddingAngle={2} stroke="none">{emissions.map(item => <Cell key={item.name} fill={item.fill}/>)}</Pie><Tooltip formatter={value => [`${Number(value).toLocaleString('en-IN')} kg CO2e`, 'Estimate']}/></PieChart></ResponsiveContainer><div className="sust-donut-center"><b>{data ? Math.round(data.totalCo2Kg).toLocaleString('en-IN') : '—'}</b><span>kg CO2e</span></div></div><div className="sust-legend">{emissions.map(item => <div key={item.name}><span style={{ background: item.fill }}/><div><b>{item.name}</b><small>{data?.totalCo2Kg ? `${(item.value / data.totalCo2Kg * 100).toFixed(1)}%` : '—'}</small></div><strong>{Math.round(item.value).toLocaleString('en-IN')} kg</strong></div>)}</div></div></article>
+      <article className="panel sust-method"><PanelTitle title="Methodology" subtitle="Calculation boundaries"/><div className="method-list"><div><span>1</span><div><b>Manufacturing</b><small>Battery kWh × component emission factors</small></div></div><div><span>2</span><div><b>Logistics</b><small>Cargo tonnes × distance × transport factor</small></div></div><div><span>3</span><div><b>Domestic allocation</b><small>Sourcing share × domestic footprint estimate</small></div></div></div><div className="method-warning"><b>Not included</b><span>Verified supplier EPDs, recycling credits, and product end-of-life impacts.</span></div></article>
+    </section>
+    <section className="sust-secondary-grid">
+      <article className="panel sust-sources"><PanelTitle title="Data sources" subtitle={`${integrations.length} registered source records`}/><div className="source-table"><div className="source-head"><span>Provider</span><span>Status</span><span>Freshness</span></div>{integrations.slice(0, 8).map(item => <div className="source-row" key={item.id || item.name}><b>{item.name}</b><span className={`source-status ${String(item.status).toLowerCase().includes('offline') ? 'offline' : 'ready'}`}>{item.status}</span><small>{item.freshness}</small></div>)}</div></article>
+      <article className="panel sust-weather"><PanelTitle title="Logistics weather" subtitle="Public forecast observations"/>{weather?.warning ? <p className="muted sust-empty">{weather.warning}</p> : <div className="weather-grid">{(weather?.items || []).slice(0, 6).map(item => <div key={item.location}><div><b>{item.location}</b><small>{item.observationTime ? new Date(item.observationTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Current observation'}</small></div><strong>{item.temperatureC == null ? '—' : `${Math.round(item.temperatureC)}°`}</strong><span>{item.windSpeedKmh == null ? 'Wind unavailable' : `${Math.round(item.windSpeedKmh)} km/h wind`}</span></div>)}</div>}</article>
+    </section>
+    <section className="sust-routes-grid">
+      <article className="panel sust-routes"><PanelTitle title="Alternative maritime routes" subtitle="Planning estimates; not live carrier schedules"/>{maritime?.routes ? <div className="route-table"><div className="route-table-head"><span>Route</span><span>Distance</span><span>Transit</span><span>Risk</span><span>Status</span></div>{maritime.routes.map(route => <div className="route-table-row" key={route.code}><div><b>{route.name}</b><small>{route.origin} → {route.destination}</small></div><span>{route.distanceKm.toLocaleString('en-IN')} km</span><span>{route.transitDays} days</span><strong>{route.riskScore}/100</strong><Status value={route.status}/></div>)}</div> : <Loading/>}</article>
+      <article className="panel sust-news"><PanelTitle title="Supply-chain intelligence" subtitle="News headlines require verification"/>{news?.warning ? <p className="muted sust-empty">{news.warning}</p> : <div className="news-feed">{(news?.items || []).slice(0, 5).map((item, index) => <a key={`${item.url}-${index}`} href={item.url || undefined} target="_blank" rel="noreferrer"><span>{index + 1}</span><div><b>{item.headline}</b><small>{item.publisher || 'Publisher unavailable'} · Unverified</small></div></a>)}</div>}</article>
+    </section>
+  </>
+}
+
 const legacyRedirects = [
   ['/login', '/'], ['/twin', '/digital-twin'], ['/suppliers', '/digital-twin'],
   ['/simulator', '/disruption-lab'], ['/disruptions', '/disruption-lab'], ['/optimization', '/disruption-lab'], ['/scenarios', '/disruption-lab'],
-  ['/risk', '/risk-compliance'], ['/compliance', '/risk-compliance'], ['/procurement', '/approvals'], ['/sustainability', '/risk-compliance'],
+  ['/risk', '/risk-compliance'], ['/compliance', '/risk-compliance'], ['/procurement', '/approvals'], ['/sustainability', '/sustainability'],
   ['/integrations', '/sap-audit'], ['/audit', '/sap-audit'], ['/reports', '/sap-audit'], ['/settings', '/'],
 ]
 
@@ -425,6 +511,7 @@ function App() {
     <Route path="/risk-compliance" element={<RiskCompliance/>}/>
     <Route path="/approvals" element={<ApprovalCenter/>}/>
     <Route path="/sap-audit" element={<SapAudit/>}/>
+    <Route path="/sustainability" element={<Sustainability/>}/>
     {legacyRedirects.map(([from, to]) => <Route key={from} path={from} element={<Navigate to={to} replace/>}/>)}
     <Route path="*" element={<Navigate to="/" replace/>}/>
   </Routes></Shell>

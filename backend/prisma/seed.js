@@ -60,6 +60,8 @@ async function main() {
     {name:'Frankfurter',kind:'CURRENCY',status:'READY',freshness:'On-demand cache'},
     {name:'GDELT',kind:'NEWS',status:'READY',freshness:'Simulated / 15 min cache'},
     {name:'Open-Meteo',kind:'WEATHER',status:'READY',freshness:'On-demand cache'},
+    {name:'Hormuz AIS',kind:'MARITIME',status:'READY',freshness:'30-minute source interval'},
+    {name:'World Bank',kind:'COUNTRY',status:'READY',freshness:'Annual publication'},
     {name:'SAP S/4HANA',kind:'ERP',status:'SIMULATED',freshness:'Local database'},
   ]})
   await prisma.auditLog.create({data:{action:'SEED_DATA_LOADED',entityType:'SYSTEM',actor:'SYSTEM',detailsJson:JSON.stringify({suppliers:14,components:6,plant:'Chakan'})}})

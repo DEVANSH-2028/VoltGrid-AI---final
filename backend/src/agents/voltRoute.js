@@ -11,7 +11,17 @@ export async function runVoltRoute(params) {
   const suppliers = matchedSuppliers.length ? matchedSuppliers : localSuppliers
   const demand = Number(params.demand || 1000)
   return {
-    ...optimizeAllocation({ suppliers, demand, tariffIncrease:Number(params.tariffIncrease||0), strategy:params.strategy||'BALANCED', inventoryLevel:Number(params.inventoryLevel||100) }),
+    ...optimizeAllocation({
+      suppliers,
+      demand,
+      tariffIncrease:Number(params.tariffIncrease||0),
+      currencyDepreciation:Number(params.currencyDepreciation||0),
+      fxRate:params.fxRate,
+      fxSource:params.fxSource,
+      fxReferenceRate:params.fxReferenceRate,
+      strategy:params.strategy||'BALANCED',
+      inventoryLevel:Number(params.inventoryLevel||100),
+    }),
     sapSource: supplierResult.meta,
   }
 }

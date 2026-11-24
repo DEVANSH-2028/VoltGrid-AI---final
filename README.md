@@ -40,6 +40,14 @@ npm run build
 npm test
 ```
 
+Optional local AI:
+
+```powershell
+ollama pull qwen2.5:3b
+```
+
+The app uses its deterministic rule engine when Ollama or external providers are unavailable.
+
 ## SAP integrations
 
 The backend provides a live-first extension gateway for S/4HANA, Ariba, IBP, and Build Process Automation. By default, `SAP_MODE="auto"` uses configured live connections and falls back to seeded local data when a connection is unavailable. Use the app's SAP Data Routing settings to select **Auto** or **Local Sandbox Only**.
